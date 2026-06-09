@@ -1,0 +1,12 @@
+
+> avni@0.1.0 dev
+> next dev
+
+▲ Next.js 16.2.7 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://172.16.0.2:3000
+- Environments: .env
+✓ Ready in 674ms
+
+ GET /settings 200 in 625ms (next.js: 258ms, application-code: 367ms)
+ GET /login 200 in 780ms (next.js: 623ms, application-code: 156ms)

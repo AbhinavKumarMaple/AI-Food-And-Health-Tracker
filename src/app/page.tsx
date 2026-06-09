@@ -1,65 +1,183 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles } from "lucide-react";
+import { getStore } from "@/lib/store";
+import type { DayDetail, UserSettings } from "@/lib/store/types";
+import { todayISODate } from "@/lib/store/util";
+import { useAuth } from "@/lib/useAuth";
+import { seedDemoData } from "@/lib/seed";
+import { formatLitres } from "@/lib/format";
+import { Screen } from "@/components/Screen";
+import { GradientPanel } from "@/components/GradientPanel";
+import { SectionHeader } from "@/components/ui";
+import { StatPill } from "@/components/journal";
+import { ActivityRow, type ActivityItem } from "@/components/cards";
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+export default function TodayPage() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
+  const [day, setDay] = useState<DayDetail | null>(null);
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [seeding, setSeeding] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const store = getStore();
+    setDay(await store.getDay(todayISODate()));
+    setSettings(await store.getSettings());
+  }, []);
+
+  useEffect(() => {
+    if (user) refresh();
+  }, [user, refresh]);
+
+  const activities = useMemo<ActivityItem[]>(() => {
+    if (!day) return [];
+    const items: ActivityItem[] = [
+      ...day.meals.map((data) => ({ kind: "meal" as const, data })),
+      ...day.symptoms.map((data) => ({ kind: "symptom" as const, data })),
+      ...day.moods.map((data) => ({ kind: "mood" as const, data })),
+      ...day.hydration.map((data) => ({ kind: "hydration" as const, data })),
+    ];
+    return items.sort(
+      (a, b) => new Date(b.data.occurredAt).getTime() - new Date(a.data.occurredAt).getTime(),
+    );
+  }, [day]);
+
+  async function loadSample() {
+    setSeeding(true);
+    await seedDemoData();
+    await refresh();
+    setSeeding(false);
+  }
+
+  if (loading || !user || !day) {
+    return (
+      <Screen>
+        <div className="p-6 text-sm text-muted">Loading…</div>
+      </Screen>
+    );
+  }
+
+  const dateLabel = new Date()
+    .toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })
+    .toUpperCase();
+  const moodAvg = day.summary?.moodAvg;
+  const waterMl = day.summary?.totalWaterMl ?? 0;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <Screen>
+      {/* Header */}
+      <GradientPanel variant="amber" rounded="rounded-b-[2rem]" className="px-6 pb-16 pt-5">
+        <p
+          className="text-[11px] font-bold tracking-[0.12em] text-white/80"
+          style={{ fontFamily: "var(--font-label)" }}
+        >
+          {dateLabel}
+        </p>
+        <p className="mt-3 text-[15px] text-white/85">{greeting()},</p>
+        <h1
+          className="text-[34px] font-extrabold leading-tight text-white"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          {user.name?.split(" ")[0] || "there"}.
+        </h1>
+        <p className="mt-1 text-[13px] text-white/80">
+          You&apos;ve logged{" "}
+          <span className="font-semibold text-white">{day.meals.length} meals</span> and{" "}
+          <span className="font-semibold text-white">{day.symptoms.length} symptoms</span> so far
+        </p>
+      </GradientPanel>
+
+      <div className="flex flex-col gap-6 px-5 pb-8">
+        {/* Tap to talk */}
+        <Link
+          href="/record"
+          className="-mt-10 flex items-center gap-4 rounded-3xl border border-line bg-surface p-4 shadow-[0_6px_20px_rgba(0,0,0,0.08)]"
+        >
+          <div className="flex flex-1 flex-col gap-1">
+            <span
+              className="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-success"
+              style={{ fontFamily: "var(--font-label)" }}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+              <span className="h-1.5 w-1.5 rounded-full bg-success" /> READY
+            </span>
+            <span className="text-[19px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+              Tap to talk
+            </span>
+            <span className="text-[12px] text-muted">Describe your meals, symptoms &amp; mood</span>
+          </div>
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg">
+            <Mic size={24} />
+          </span>
+        </Link>
+
+        {!settings?.geminiApiKey && (
+          <Link
+            href="/settings"
+            className="flex items-center gap-2 rounded-2xl bg-primary-tint px-4 py-3 text-[12px] font-medium text-primary-press"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+            <Sparkles size={15} /> Add your Gemini API key in Settings to enable voice logging
+            <ChevronRight size={15} className="ml-auto" />
+          </Link>
+        )}
+
+        {/* Snapshot */}
+        <section className="flex flex-col gap-3">
+          <SectionHeader
+            title="Today's snapshot"
+            action={
+              <Link href="/stats" className="flex items-center gap-0.5 text-[12px] font-semibold text-primary-press">
+                View all <ChevronRight size={14} />
+              </Link>
+            }
+          />
+          <div className="grid grid-cols-3 gap-3">
+            <StatPill icon={Utensils} value={String(day.meals.length)} label="Meals" />
+            <StatPill icon={Droplets} tone="warm" value={formatLitres(waterMl)} label="Water" />
+            <StatPill icon={Star} tone="success" value={moodAvg ? moodAvg.toFixed(1) : "—"} label="Mood" />
+          </div>
+        </section>
+
+        {/* Recent activity */}
+        <section className="flex flex-col gap-3">
+          <SectionHeader title="Recent activity" />
+          {activities.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-surface/60 px-6 py-10 text-center">
+              <p className="text-[13px] text-muted">No entries yet today.</p>
+              <button
+                onClick={loadSample}
+                disabled={seeding}
+                className="rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
+              >
+                {seeding ? "Loading…" : "Load sample data"}
+              </button>
+              <Link href="/record" className="text-[13px] font-semibold text-primary-press">
+                or record your first log →
+              </Link>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {activities.map((item) => (
+                <ActivityRow
+                  key={`${item.kind}-${item.data.id}`}
+                  item={item}
+                  onClick={() => router.push(`/day/${todayISODate()}`)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </Screen>
   );
 }
