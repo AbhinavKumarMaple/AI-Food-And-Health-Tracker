@@ -1,29 +1,26 @@
-import { LocalAuth, type AuthService } from "./auth";
+import { ApiAuth, type AuthService } from "./apiAuth";
+import { ApiDataStore } from "./apiDataStore";
 import type { DataStore } from "./dataStore";
-import { getKVBackend } from "./kv";
-import { LocalDataStore } from "./localDataStore";
 
-// Single import point for persistence. Today these resolve to the localStorage
-// implementation; swapping to a Postgres/API backend later means returning a
-// different implementation here — no screen changes required.
+// Single import point for persistence + auth. These now resolve to the
+// Supabase-backed implementations (server Prisma via the /api routes). The
+// localStorage implementation remains in the repo for offline/testing use.
 
-let authSingleton: LocalAuth | null = null;
-let storeSingleton: LocalDataStore | null = null;
+let authSingleton: ApiAuth | null = null;
+let storeSingleton: ApiDataStore | null = null;
 
-export function getAuth(): AuthService & LocalAuth {
-  if (!authSingleton) authSingleton = new LocalAuth(getKVBackend());
+export function getAuth(): AuthService {
+  if (!authSingleton) authSingleton = new ApiAuth();
   return authSingleton;
 }
 
 export function getStore(): DataStore {
-  if (!storeSingleton) {
-    storeSingleton = new LocalDataStore(getAuth(), getKVBackend());
-  }
+  if (!storeSingleton) storeSingleton = new ApiDataStore();
   return storeSingleton;
 }
 
 export type { DataStore } from "./dataStore";
-export type { AuthService } from "./auth";
+export type { AuthService } from "./apiAuth";
 export * from "./types";
 export type {
   NewMeal,

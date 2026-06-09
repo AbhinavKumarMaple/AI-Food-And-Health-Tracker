@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Utensils, Droplets, Activity, Flame, Sparkles } from "lucide-react";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
@@ -14,6 +14,8 @@ import {
 import type { Insight } from "@/lib/store/types";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
+import { RefreshButton } from "@/components/RefreshButton";
+import { StatsSkeleton } from "@/components/skeletons";
 import { GradientPanel } from "@/components/GradientPanel";
 import { Card } from "@/components/cards";
 import { StatPill } from "@/components/journal";
@@ -31,27 +33,32 @@ export default function StatsPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [insights, setInsights] = useState<Insightish[]>([]);
 
+  const load = useCallback(async () => {
+    const store = getStore();
+    const data = await store.getCorrelationDataset();
+    setStats(computeStats(data, range));
+    const correlations = computeCorrelations(data);
+    const end = new Date();
+    const start = new Date();
+    start.setDate(end.getDate() - range);
+    const ins = correlationsToInsights(correlations, {
+      start: start.toISOString(),
+      end: end.toISOString(),
+    });
+    setInsights(ins);
+    store.replaceInsights(ins);
+  }, [range]);
+
   useEffect(() => {
-    if (!user) return;
-    (async () => {
-      const store = getStore();
-      const data = await store.getCorrelationDataset();
-      setStats(computeStats(data, range));
-      const correlations = computeCorrelations(data);
-      const end = new Date();
-      const start = new Date();
-      start.setDate(end.getDate() - range);
-      const ins = correlationsToInsights(correlations, {
-        start: start.toISOString(),
-        end: end.toISOString(),
-      });
-      setInsights(ins);
-      store.replaceInsights(ins);
-    })();
-  }, [user, range]);
+    if (user) load();
+  }, [user, load]);
 
   if (loading || !user || !stats) {
-    return <Screen><div className="p-6 text-sm text-muted">Loading…</div></Screen>;
+    return (
+      <Screen>
+        <StatsSkeleton />
+      </Screen>
+    );
   }
 
   const maxBar = 5;
@@ -63,15 +70,18 @@ export default function StatsPage() {
         eyebrow="Insights"
         back={false}
         right={
-          <select
-            value={range}
-            onChange={(e) => setRange(Number(e.target.value))}
-            className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] font-semibold text-ink outline-none"
-          >
-            <option value={7}>7 days</option>
-            <option value={30}>30 days</option>
-            <option value={90}>90 days</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <RefreshButton onRefresh={load} />
+            <select
+              value={range}
+              onChange={(e) => setRange(Number(e.target.value))}
+              className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] font-semibold text-ink outline-none"
+            >
+              <option value={7}>7 days</option>
+              <option value={30}>30 days</option>
+              <option value={90}>90 days</option>
+            </select>
+          </div>
         }
       />
 

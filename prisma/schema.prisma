@@ -1,21 +1,17 @@
-// AI Food & Health Tracker — data model
-// Principle: capture as much structured detail as possible so food→health
-// patterns can be detected later. All user-owned rows carry userId.
+// AI Food & Health Tracker — Supabase Postgres schema.
+// Domain-aligned: meals embed items, symptoms embed triggers, day summaries embed
+// rating samples (as JSON), matching the app's DataStore types so the server
+// implementation maps 1:1. Analytics run in application code, not SQL joins.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled (pgbouncer) for runtime
+  directUrl = env("DIRECT_URL") // direct/session for migrations
 }
-
-// ----------------------------------------------------------------------------
-// Enums (app-controlled lifecycle fields). Open-ended, AI-filled categorical
-// values (mealType, symptomType, foodCategory, beverageType) are stored as
-// String for flexibility and normalized/validated in application code.
-// ----------------------------------------------------------------------------
 
 enum ParseStatus {
   draft
@@ -87,10 +83,6 @@ enum InsightStatus {
   confirmed
 }
 
-// ----------------------------------------------------------------------------
-// Identity & settings
-// ----------------------------------------------------------------------------
-
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -98,7 +90,6 @@ model User {
   name         String?
   timezone     String   @default("UTC")
 
-  // Health context (improves pattern accuracy)
   dateOfBirth       DateTime?
   sex               String?
   heightCm          Float?
@@ -112,48 +103,28 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  settings      UserSettings?
-  logSessions   LogSession[]
-  meals         Meal[]
-  symptoms      Symptom[]
-  moods         Mood[]
-  hydrationLogs HydrationLog[]
-  daySummaries  DaySummary[]
-  followUps     FollowUpQuestion[]
-  insights      Insight[]
 }
 
 model UserSettings {
   id     String @id @default(cuid())
   userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Gemini API key encrypted at rest (AES-256-GCM)
   geminiApiKeyCiphertext String?
   geminiApiKeyIv         String?
   geminiApiKeyTag        String?
 
-  selectedModel         String                 @default("gemini-2.0-flash")
-  units                 Units                  @default(metric)
+  selectedModel          String                 @default("gemini-2.5-flash-lite")
+  units                  Units                  @default(metric)
   followUpAggressiveness FollowUpAggressiveness @default(medium)
 
-  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
-
-// ----------------------------------------------------------------------------
-// Capture session (raw input + AI output)
-// ----------------------------------------------------------------------------
 
 model LogSession {
   id     String @id @default(cuid())
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   inputType            InputType   @default(voice)
-  audioPath            String?
-  audioMime            String?
   audioDurationSeconds Float?
   transcript           String?     @db.Text
   typedTextBefore      String?     @db.Text
@@ -167,152 +138,77 @@ model LogSession {
   createdAt   DateTime  @default(now())
   confirmedAt DateTime?
 
-  meals         Meal[]
-  symptoms      Symptom[]
-  moods         Mood[]
-  hydrationLogs HydrationLog[]
-  followUps     FollowUpQuestion[]
-
   @@index([userId, createdAt])
 }
 
-// ----------------------------------------------------------------------------
-// Meals & structured food items
-// ----------------------------------------------------------------------------
-
 model Meal {
-  id           String      @id @default(cuid())
+  id           String @id @default(cuid())
   userId       String
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   logSessionId String?
-  logSession   LogSession? @relation(fields: [logSessionId], references: [id], onDelete: SetNull)
 
-  occurredAt     DateTime
-  timeConfidence TimeConfidence @default(exact)
-  mealType       String         @default("other") // breakfast|lunch|dinner|snack|drink|other
-  title          String
-  description    String?        @db.Text
-
-  location       String?
-  restaurantName String?
-  socialContext  String?
-  hungerBefore   Int? // 1-5
-  fullnessAfter  Int? // 1-5
-  preparation    String? // home_cooked|restaurant|packaged|takeout|other
-
+  occurredAt        DateTime
+  timeConfidence    TimeConfidence @default(exact)
+  mealType          String         @default("other")
+  title             String
+  description       String?        @db.Text
+  location          String?
+  restaurantName    String?
+  socialContext     String?
+  hungerBefore      Int?
+  fullnessAfter     Int?
+  preparation       String?
   estimatedCalories Int?
-  macros            Json? // { protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg }
+  macros            Json?
   portionSize       String?
-
-  completenessScore Int         @default(0) // 0-100
-  aiConfidence      Float? // 0-1
-  source            EntrySource @default(voice)
-  notes             String?     @db.Text
+  completenessScore Int            @default(0)
+  aiConfidence      Float?
+  source            EntrySource    @default(voice)
+  notes             String?        @db.Text
+  items             Json           @default("[]")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  items    MealItem[]
-  triggers SymptomTrigger[]
 
   @@index([userId, occurredAt])
 }
 
-model MealItem {
-  id     String @id @default(cuid())
-  mealId String
-  meal   Meal   @relation(fields: [mealId], references: [id], onDelete: Cascade)
-
-  name          String
-  canonicalName String // normalized for correlation (lowercased/singular)
-  quantity      Float?
-  unit          String?
-  foodCategory  String? // grain|dairy|fruit|vegetable|protein|fat|beverage|caffeine|alcohol|sweet|processed|other
-  tags          String[] @default([]) // Fiber|Protein|Caffeine|Gluten|Dairy|Spicy|Fermented|...
-
-  isPotentialAllergen Boolean @default(false)
-  allergenType        String?
-  estimatedCalories   Int?
-
-  createdAt DateTime @default(now())
-
-  triggers SymptomTrigger[]
-
-  @@index([mealId])
-  @@index([canonicalName])
-}
-
-// ----------------------------------------------------------------------------
-// Symptoms & suspected triggers
-// ----------------------------------------------------------------------------
-
 model Symptom {
-  id           String      @id @default(cuid())
+  id           String @id @default(cuid())
   userId       String
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   logSessionId String?
-  logSession   LogSession? @relation(fields: [logSessionId], references: [id], onDelete: SetNull)
 
-  occurredAt     DateTime // onset
-  timeConfidence TimeConfidence @default(exact)
-  symptomType    String         @default("other") // bloating|headache|nausea|fatigue|cramps|heartburn|skin|mood|other
-  title          String
-  severity       Int            @default(3) // 1-5
-  durationMinutes Int?
-  isOngoing      Boolean        @default(false)
-  resolvedAt     DateTime?
-  bodyLocation   String?
-  description    String?        @db.Text
-
-  completenessScore Int         @default(0)
+  occurredAt        DateTime
+  timeConfidence    TimeConfidence @default(exact)
+  symptomType       String         @default("other")
+  title             String
+  severity          Int            @default(3)
+  durationMinutes   Int?
+  isOngoing         Boolean        @default(false)
+  resolvedAt        DateTime?
+  bodyLocation      String?
+  description       String?        @db.Text
+  completenessScore Int            @default(0)
   aiConfidence      Float?
-  source            EntrySource @default(voice)
+  source            EntrySource    @default(voice)
+  triggers          Json           @default("[]")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  triggers SymptomTrigger[]
 
   @@index([userId, occurredAt])
   @@index([userId, symptomType])
 }
 
-model SymptomTrigger {
-  id        String  @id @default(cuid())
-  symptomId String
-  symptom   Symptom @relation(fields: [symptomId], references: [id], onDelete: Cascade)
-
-  suspectedMealId     String?
-  suspectedMeal       Meal?     @relation(fields: [suspectedMealId], references: [id], onDelete: SetNull)
-  suspectedMealItemId String?
-  suspectedMealItem   MealItem? @relation(fields: [suspectedMealItemId], references: [id], onDelete: SetNull)
-  suspectedFoodText   String?
-
-  relationNote   String?       @db.Text
-  source         TriggerSource @default(user)
-  userConfidence Int? // 1-5
-
-  createdAt DateTime @default(now())
-
-  @@index([symptomId])
-}
-
-// ----------------------------------------------------------------------------
-// Mood & hydration
-// ----------------------------------------------------------------------------
-
 model Mood {
-  id           String      @id @default(cuid())
+  id           String @id @default(cuid())
   userId       String
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   logSessionId String?
-  logSession   LogSession? @relation(fields: [logSessionId], references: [id], onDelete: SetNull)
 
   occurredAt  DateTime
-  rating      Int // 1-5
+  rating      Int
   label       String?
-  energyLevel Int? // 1-5
-  stressLevel Int? // 1-5
+  energyLevel Int?
+  stressLevel Int?
   notes       String?     @db.Text
   source      EntrySource @default(voice)
 
@@ -323,15 +219,13 @@ model Mood {
 }
 
 model HydrationLog {
-  id           String      @id @default(cuid())
+  id           String @id @default(cuid())
   userId       String
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   logSessionId String?
-  logSession   LogSession? @relation(fields: [logSessionId], references: [id], onDelete: SetNull)
 
   occurredAt   DateTime
   amountMl     Int
-  beverageType String      @default("water") // water|coffee|tea|juice|soda|alcohol|other
+  beverageType String      @default("water")
   notes        String?
   source       EntrySource @default(voice)
 
@@ -340,28 +234,22 @@ model HydrationLog {
   @@index([userId, occurredAt])
 }
 
-// ----------------------------------------------------------------------------
-// Day rollups
-// ----------------------------------------------------------------------------
-
 model DaySummary {
   id     String @id @default(cuid())
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  date            DateTime  @db.Date
-  overallRating   Int? // 1-5
-  ratingLabel     String?
+  date             String // YYYY-MM-DD (local calendar day)
+  overallRating    Float?
+  ratingLabel      String?
   ratingCapturedAt DateTime?
-  isClosed        Boolean   @default(false)
-  reflection      String?   @db.Text
-  aiSummary       String?   @db.Text
-
-  // denormalized rollups (recomputed on save)
-  mealCount     Int @default(0)
-  symptomCount  Int @default(0)
-  moodAvg       Float?
-  totalWaterMl  Int @default(0)
+  ratingSamples    Json      @default("[]")
+  isClosed         Boolean   @default(false)
+  reflection       String?   @db.Text
+  aiSummary        String?   @db.Text
+  mealCount        Int       @default(0)
+  symptomCount     Int       @default(0)
+  moodAvg          Float?
+  totalWaterMl     Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -370,16 +258,10 @@ model DaySummary {
   @@index([userId, date])
 }
 
-// ----------------------------------------------------------------------------
-// Ask-more follow-ups
-// ----------------------------------------------------------------------------
-
 model FollowUpQuestion {
-  id           String      @id @default(cuid())
+  id           String @id @default(cuid())
   userId       String
-  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   logSessionId String?
-  logSession   LogSession? @relation(fields: [logSessionId], references: [id], onDelete: SetNull)
 
   targetType   FollowUpTargetType
   targetId     String?
@@ -395,34 +277,26 @@ model FollowUpQuestion {
   @@index([userId, status])
 }
 
-// ----------------------------------------------------------------------------
-// Pattern engine output
-// ----------------------------------------------------------------------------
-
 model Insight {
   id     String @id @default(cuid())
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  insightType  InsightType
-  subjectKind  String? // food|ingredient|tag|meal_type|beverage
-  subjectValue String?
-  objectKind   String? // symptom_type|mood
-  objectValue  String?
-
-  title       String
-  description String  @db.Text
-
-  strength      Float? // 0-1
+  insightType   InsightType
+  subjectKind   String?
+  subjectValue  String?
+  objectKind    String?
+  objectValue   String?
+  title         String
+  description   String        @db.Text
+  strength      Float?
   supportCount  Int?
   exposureCount Int?
-  confidence    Float? // 0-1
+  confidence    Float?
   avgLagMinutes Int?
-
-  periodStart DateTime?
-  periodEnd   DateTime?
-  status      InsightStatus @default(active)
-  evidence    Json?
+  periodStart   DateTime?
+  periodEnd     DateTime?
+  status        InsightStatus @default(active)
+  evidence      Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

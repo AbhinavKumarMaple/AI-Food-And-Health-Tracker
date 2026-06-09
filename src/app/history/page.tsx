@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Star } from "lucide-react";
 import { getStore } from "@/lib/store";
@@ -9,6 +9,8 @@ import type { DaySummary } from "@/lib/store/types";
 import { toISODate } from "@/lib/store/util";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
+import { RefreshButton } from "@/components/RefreshButton";
+import { HistorySkeleton } from "@/components/skeletons";
 import { GradientPanel } from "@/components/GradientPanel";
 import { SectionHeader } from "@/components/ui";
 import { HistoryRow } from "@/components/journal";
@@ -21,9 +23,13 @@ export default function HistoryPage() {
   const { user, loading } = useAuth();
   const [summaries, setSummaries] = useState<DaySummary[]>([]);
 
+  const load = useCallback(async () => {
+    setSummaries(await getStore().listDaySummaries());
+  }, []);
+
   useEffect(() => {
-    if (user) getStore().listDaySummaries().then(setSummaries);
-  }, [user]);
+    if (user) load();
+  }, [user, load]);
 
   const today = toISODate(new Date());
 
@@ -54,7 +60,11 @@ export default function HistoryPage() {
   }, [summaries]);
 
   if (loading || !user) {
-    return <Screen><div className="p-6 text-sm text-muted">Loading…</div></Screen>;
+    return (
+      <Screen>
+        <HistorySkeleton />
+      </Screen>
+    );
   }
 
   return (
@@ -64,9 +74,12 @@ export default function HistoryPage() {
         eyebrow="Your journal"
         back={false}
         right={
-          <button className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-muted">
-            <Search size={17} />
-          </button>
+          <div className="flex items-center gap-2">
+            <RefreshButton onRefresh={load} />
+            <button className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-muted">
+              <Search size={17} />
+            </button>
+          </div>
         }
       />
 

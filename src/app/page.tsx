@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles, Bell, Info } from "lucide-react";
 import { SayGuideSheet } from "@/components/SayGuideSheet";
+import { RefreshButton } from "@/components/RefreshButton";
+import { TodaySkeleton } from "@/components/skeletons";
 import { getStore } from "@/lib/store";
 import type { DayDetail, UserSettings } from "@/lib/store/types";
 import { todayISODate } from "@/lib/store/util";
@@ -65,7 +67,7 @@ export default function TodayPage() {
   if (loading || !user || !day) {
     return (
       <Screen>
-        <div className="p-6 text-sm text-muted">Loading…</div>
+        <TodaySkeleton />
       </Screen>
     );
   }
@@ -87,7 +89,10 @@ export default function TodayPage() {
           >
             {dateLabel}
           </p>
-          <Bell size={18} className="text-white/85" />
+          <div className="flex items-center gap-2">
+            <RefreshButton light onRefresh={refresh} />
+            <Bell size={18} className="text-white/85" />
+          </div>
         </div>
         <p className="mt-3 text-[15px] text-white/85">{greeting()},</p>
         <h1

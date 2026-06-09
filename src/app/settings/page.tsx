@@ -9,6 +9,7 @@ import type { GeminiModel } from "@/lib/gemini/models";
 import { useAuth } from "@/lib/useAuth";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
+import { FormSkeleton } from "@/components/skeletons";
 import { Card } from "@/components/cards";
 import { PrimaryButton } from "@/components/ui";
 
@@ -63,13 +64,17 @@ export default function SettingsPage() {
     setSettings(await getStore().updateSettings(p));
   }
 
-  function signOut() {
-    getAuth().signOut();
+  async function signOut() {
+    await getAuth().signOut();
     router.replace("/login");
   }
 
   if (loading || !user || !settings) {
-    return <Screen showTab={false}><div className="p-6 text-sm text-muted">Loading…</div></Screen>;
+    return (
+      <Screen showTab={false}>
+        <FormSkeleton />
+      </Screen>
+    );
   }
 
   return (

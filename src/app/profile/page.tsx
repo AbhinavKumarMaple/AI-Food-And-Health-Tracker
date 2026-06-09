@@ -9,6 +9,7 @@ import type { User } from "@/lib/store/types";
 import { useAuth } from "@/lib/useAuth";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
+import { FormSkeleton } from "@/components/skeletons";
 import { Card } from "@/components/cards";
 import { PrimaryButton } from "@/components/ui";
 
@@ -45,13 +46,17 @@ export default function ProfilePage() {
     setTimeout(() => setSaved(false), 1500);
   }
 
-  function signOut() {
-    getAuth().signOut();
+  async function signOut() {
+    await getAuth().signOut();
     router.replace("/login");
   }
 
   if (loading || !user || !profile) {
-    return <Screen><div className="p-6 text-sm text-muted">Loading…</div></Screen>;
+    return (
+      <Screen>
+        <FormSkeleton />
+      </Screen>
+    );
   }
 
   return (

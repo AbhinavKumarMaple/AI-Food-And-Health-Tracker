@@ -11,6 +11,7 @@ import { nowIso, toISODate } from "@/lib/store/util";
 import { mealIcon, symptomIcon, beverageIcon } from "@/lib/icons";
 import { formatTime } from "@/lib/format";
 import { Screen } from "@/components/Screen";
+import { ReviewSkeleton } from "@/components/skeletons";
 import { GradientPanel } from "@/components/GradientPanel";
 import { Card } from "@/components/cards";
 import { Chip, CompletenessRing, IconBadge, Stars, PrimaryButton } from "@/components/ui";
@@ -146,7 +147,12 @@ export default function ReviewPage() {
         </div>
       </Screen>
     );
-  if (!drafts) return <Screen showTab={false}><div className="p-6 text-sm text-muted">Loading…</div></Screen>;
+  if (!drafts)
+    return (
+      <Screen showTab={false}>
+        <ReviewSkeleton />
+      </Screen>
+    );
 
   return (
     <Screen showTab={false}>

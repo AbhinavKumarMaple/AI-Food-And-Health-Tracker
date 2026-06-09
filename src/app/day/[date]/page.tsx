@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/useAuth";
 import type { DayDetail } from "@/lib/store/types";
 import { formatLitres, formatTime, moodLabel } from "@/lib/format";
 import { Screen } from "@/components/Screen";
+import { RefreshButton } from "@/components/RefreshButton";
+import { DaySkeleton } from "@/components/skeletons";
 import { Card, ActivityRow, type ActivityItem } from "@/components/cards";
 import { Chip, Stars } from "@/components/ui";
 
@@ -65,7 +67,11 @@ export default function DayDetailPage() {
   }
 
   if (loading || !user || !day) {
-    return <Screen><div className="p-6 text-sm text-muted">Loading…</div></Screen>;
+    return (
+      <Screen>
+        <DaySkeleton />
+      </Screen>
+    );
   }
 
   const summary = day.summary;
@@ -92,7 +98,9 @@ export default function DayDetailPage() {
             {dateObj.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
           </span>
         </div>
-        <div className="relative">
+        <div className="flex items-center gap-2">
+          <RefreshButton onRefresh={refresh} />
+          <div className="relative">
           <button
             onClick={() => setMenuOpen((v) => !v)}
             aria-label="More"
@@ -126,6 +134,7 @@ export default function DayDetailPage() {
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
 
