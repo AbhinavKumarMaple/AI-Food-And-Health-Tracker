@@ -77,7 +77,7 @@ export default function TodayPage() {
   return (
     <Screen>
       {/* Header */}
-      <GradientPanel variant="amber" rounded="rounded-b-[2rem]" className="px-6 pb-16 pt-5">
+      <GradientPanel variant="amber" rounded="rounded-b-[2rem]" className="px-6 pb-7 pt-5">
         <p
           className="text-[11px] font-bold tracking-[0.12em] text-white/80"
           style={{ fontFamily: "var(--font-label)" }}

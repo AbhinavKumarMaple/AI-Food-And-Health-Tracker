@@ -145,11 +145,15 @@ export async function seedDemoData(): Promise<void> {
       source: "manual",
     });
 
-    await store.upsertDaySummary(toISODate(at(d, 12, 0)), {
-      overallRating: dairyDays.has(d) ? 3 : 4,
-      ratingLabel: dairyDays.has(d) ? "Okay" : "Pretty good",
-      ratingCapturedAt: at(d, 22, 0),
-      isClosed: d > 0,
-    });
+    // Rate the day a couple of times (the final rating is time-weighted).
+    const dateIso = toISODate(at(d, 12, 0));
+    if (dairyDays.has(d)) {
+      await store.recordDayRating(dateIso, 3, at(d, 11, 0));
+      await store.recordDayRating(dateIso, 2, at(d, 20, 0));
+    } else {
+      await store.recordDayRating(dateIso, 4, at(d, 13, 0));
+      await store.recordDayRating(dateIso, 4, at(d, 21, 0));
+    }
+    await store.upsertDaySummary(dateIso, { isClosed: d > 0 });
   }
 }

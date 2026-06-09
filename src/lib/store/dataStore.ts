@@ -107,6 +107,11 @@ export interface DataStore {
   upsertDaySummary(date: ISODate, patch: Partial<DaySummary>): Promise<DaySummary>;
   /** Recompute denormalized rollups (counts, water, mood avg) for a date. */
   recomputeDaySummary(date: ISODate): Promise<DaySummary>;
+  /**
+   * Record a day rating the user entered (default now). Appends a timestamped
+   * sample and recomputes overallRating as a time-weighted average.
+   */
+  recordDayRating(date: ISODate, rating: number, at?: ISODateTime): Promise<DaySummary>;
 
   // follow-ups (ask-more)
   addFollowUps(items: NewFollowUp[]): Promise<FollowUpQuestion[]>;

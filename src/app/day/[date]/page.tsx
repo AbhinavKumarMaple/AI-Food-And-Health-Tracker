@@ -7,7 +7,6 @@ import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import type { DayDetail } from "@/lib/store/types";
 import { formatLitres, formatTime, moodLabel } from "@/lib/format";
-import { nowIso } from "@/lib/store/util";
 import { Screen } from "@/components/Screen";
 import { Card, ActivityRow, type ActivityItem } from "@/components/cards";
 import { Chip, Stars } from "@/components/ui";
@@ -46,12 +45,7 @@ export default function DayDetailPage() {
   }, [day]);
 
   async function setRating(rating: number) {
-    const store = getStore();
-    await store.upsertDaySummary(date, {
-      overallRating: rating,
-      ratingLabel: moodLabel(rating),
-      ratingCapturedAt: nowIso(),
-    });
+    await getStore().recordDayRating(date, rating);
     refresh();
   }
 
@@ -62,6 +56,11 @@ export default function DayDetailPage() {
   const summary = day.summary;
   const dateObj = new Date(`${date}T12:00:00`);
   const waterMl = day.hydration.reduce((a, h) => a + h.amountMl, 0);
+  const ratingSamples = summary?.ratingSamples ?? [];
+  const lastSampleRating = ratingSamples.length
+    ? ratingSamples[ratingSamples.length - 1].rating
+    : (summary?.overallRating ?? 0);
+  const twa = summary?.overallRating ?? null;
 
   return (
     <Screen>
@@ -104,23 +103,31 @@ export default function DayDetailPage() {
               </span>
               <span className="text-[16px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>How you felt</span>
             </div>
-            {summary?.isClosed && (
+            {ratingSamples.length > 1 ? (
+              <span className="rounded-md bg-warm px-2 py-1 text-[10px] font-bold text-muted">
+                {ratingSamples.length} check-ins
+              </span>
+            ) : summary?.isClosed ? (
               <span className="flex items-center gap-1 rounded-md bg-warm px-2 py-1 text-[10px] font-bold text-muted">
                 <CheckCircle2 size={11} /> Day closed
               </span>
-            )}
+            ) : null}
           </div>
           <div className="mt-3 flex items-center justify-between">
-            <Stars value={summary?.overallRating ?? 0} size={32} onChange={setRating} />
+            <Stars value={lastSampleRating} size={32} onChange={setRating} />
           </div>
-          <p className="mt-2 text-[13px] text-muted">
-            {summary?.overallRating != null
-              ? `${summary.overallRating} / 5 · ${summary.ratingLabel || moodLabel(summary.overallRating)}`
-              : "Tap the stars to rate your day"}
-            {summary?.ratingCapturedAt && (
-              <span className="text-faint"> · captured {formatTime(summary.ratingCapturedAt)}</span>
-            )}
-          </p>
+          {twa != null ? (
+            <p className="mt-2 text-[13px] text-muted">
+              <span className="font-semibold text-ink">{twa.toFixed(1)} / 5</span> ·{" "}
+              {summary?.ratingLabel || moodLabel(Math.round(twa))}
+              {ratingSamples.length > 1 && <span className="text-faint"> · weighted across your day</span>}
+              {summary?.ratingCapturedAt && (
+                <span className="text-faint"> · updated {formatTime(summary.ratingCapturedAt)}</span>
+              )}
+            </p>
+          ) : (
+            <p className="mt-2 text-[13px] text-muted">Tap the stars to rate your day</p>
+          )}
         </Card>
 
         {/* Timeline */}

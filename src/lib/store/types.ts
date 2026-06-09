@@ -170,13 +170,22 @@ export interface HydrationLog {
   createdAt: ISODateTime;
 }
 
+/** One rating the user entered for a day, with when they entered it. */
+export interface DayRatingSample {
+  rating: number; // 1-5
+  at: ISODateTime;
+}
+
 export interface DaySummary {
   id: ID;
   userId: ID;
   date: ISODate;
+  /** Time-weighted average of ratingSamples (the day's "general feel"). */
   overallRating?: number | null;
   ratingLabel?: string | null;
   ratingCapturedAt?: ISODateTime | null;
+  /** Every rating entered through the day; overallRating is derived from these. */
+  ratingSamples: DayRatingSample[];
   isClosed: boolean;
   reflection?: string | null;
   aiSummary?: string | null;

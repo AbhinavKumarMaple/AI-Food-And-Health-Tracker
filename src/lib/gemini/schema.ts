@@ -4,7 +4,9 @@ import { z } from "zod";
 // a log session. These are the validation source of truth — Gemini is prompted
 // to match this shape, and the response is validated here before persistence.
 
-const clamp1to5 = z.number().int().min(1).max(5);
+// LLMs are loose with numeric ranges/enums. We accept any number here and
+// clamp/normalize in draft.ts so a sane response never fails validation.
+const looseNum = z.number().nullish();
 
 export const parsedMacrosSchema = z
   .object({
@@ -39,54 +41,55 @@ export const parsedMealSchema = z.object({
   location: z.string().nullish(),
   restaurantName: z.string().nullish(),
   socialContext: z.string().nullish(),
-  hungerBefore: clamp1to5.nullish(),
-  fullnessAfter: clamp1to5.nullish(),
+  hungerBefore: looseNum,
+  fullnessAfter: looseNum,
   preparation: z.string().nullish(),
   portionSize: z.string().nullish(),
-  estimatedCalories: z.number().int().nullish(),
+  estimatedCalories: looseNum,
   macros: parsedMacrosSchema.nullish(),
   items: z.array(parsedMealItemSchema).default([]),
-  completenessScore: z.number().int().min(0).max(100).default(0),
-  aiConfidence: z.number().min(0).max(1).nullish(),
+  completenessScore: looseNum,
+  aiConfidence: looseNum,
   notes: z.string().nullish(),
 });
 
 export const parsedSymptomSchema = z.object({
   symptomType: z.string().default("other"),
   title: z.string().min(1),
-  severity: clamp1to5.default(3),
+  severity: looseNum,
   occurredAt: z.string().nullish(),
   timeText: z.string().nullish(),
   timeConfidence: z.enum(["exact", "approx", "inferred"]).default("inferred"),
-  durationMinutes: z.number().int().nullish(),
-  isOngoing: z.boolean().default(false),
+  durationMinutes: looseNum,
+  isOngoing: z.boolean().nullish(),
   bodyLocation: z.string().nullish(),
   description: z.string().nullish(),
   // Free-text food the user suspects caused this symptom ("I think it was the coffee")
   suspectedFoodText: z.string().nullish(),
-  completenessScore: z.number().int().min(0).max(100).default(0),
-  aiConfidence: z.number().min(0).max(1).nullish(),
+  completenessScore: looseNum,
+  aiConfidence: looseNum,
 });
 
 export const parsedMoodSchema = z.object({
-  rating: clamp1to5,
+  rating: looseNum,
   label: z.string().nullish(),
   occurredAt: z.string().nullish(),
   timeText: z.string().nullish(),
-  energyLevel: clamp1to5.nullish(),
-  stressLevel: clamp1to5.nullish(),
+  energyLevel: looseNum,
+  stressLevel: looseNum,
   notes: z.string().nullish(),
 });
 
 export const parsedHydrationSchema = z.object({
-  amountMl: z.number().int().positive(),
-  beverageType: z.string().default("water"),
+  amountMl: looseNum,
+  beverageType: z.string().nullish(),
   occurredAt: z.string().nullish(),
   timeText: z.string().nullish(),
 });
 
 export const parsedFollowUpSchema = z.object({
-  targetType: z.enum(["meal", "symptom", "mood", "hydration", "day", "general"]),
+  // Normalized to a valid FollowUpTargetType in draft.ts.
+  targetType: z.string(),
   // Index into the corresponding array above, when the question targets a specific entry.
   targetIndex: z.number().int().nullish(),
   questionText: z.string().min(1),

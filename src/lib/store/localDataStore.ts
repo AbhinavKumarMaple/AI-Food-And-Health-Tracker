@@ -34,8 +34,10 @@ import type {
   UserSettings,
 } from "./types";
 import { compareDesc, newId, nowIso, toISODate } from "./util";
+import { endOfDayIso, roundRating, timeWeightedRating } from "@/lib/patterns/dayRating";
+import { moodLabel } from "@/lib/format";
 
-const DEFAULT_MODEL = "gemini-2.0-flash";
+const DEFAULT_MODEL = "gemini-2.5-flash-lite";
 
 export class LocalDataStore implements DataStore {
   constructor(
@@ -329,6 +331,7 @@ export class LocalDataStore implements DataStore {
         overallRating: null,
         ratingLabel: null,
         ratingCapturedAt: null,
+        ratingSamples: [],
         isClosed: false,
         reflection: null,
         aiSummary: null,
@@ -347,6 +350,31 @@ export class LocalDataStore implements DataStore {
     summaries[idx] = { ...summaries[idx], ...patch, id: summaries[idx].id, date, userId: this.uid(), updatedAt: now };
     this.write("daySummaries", summaries);
     return summaries[idx];
+  }
+
+  async recordDayRating(
+    date: ISODate,
+    rating: number,
+    at: string = nowIso(),
+  ): Promise<DaySummary> {
+    const current = await this.upsertDaySummary(date, {});
+    // Keep the sample within the day it belongs to (e.g. editing a past day
+    // shouldn't stamp the rating with "now", which would skew the weighting).
+    const startMs = new Date(`${date}T00:00:00.000`).getTime();
+    const endMs = new Date(`${date}T23:59:59.999`).getTime();
+    const atMs = new Date(at).getTime();
+    const clampedAt = new Date(
+      Math.min(Math.max(Number.isNaN(atMs) ? endMs : atMs, startMs), endMs),
+    ).toISOString();
+    const samples = [...(current.ratingSamples ?? []), { rating, at: clampedAt }];
+    const twa = timeWeightedRating(samples, endOfDayIso(date));
+    const rounded = twa != null ? roundRating(twa) : null;
+    return this.upsertDaySummary(date, {
+      ratingSamples: samples,
+      overallRating: rounded,
+      ratingLabel: rounded != null ? moodLabel(Math.round(rounded)) : null,
+      ratingCapturedAt: clampedAt,
+    });
   }
 
   async recomputeDaySummary(date: ISODate): Promise<DaySummary> {

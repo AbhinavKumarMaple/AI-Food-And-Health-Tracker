@@ -1,6 +1,28 @@
 import { getGeminiClient } from "./client";
 import { parseResultSchema, type ParseResult } from "./schema";
 
+type GenAiClient = ReturnType<typeof getGeminiClient>;
+type GenerateParams = Parameters<GenAiClient["models"]["generateContent"]>[0];
+
+/** Call Gemini, retrying once on transient overload (503 / UNAVAILABLE). */
+async function generateWithRetry(ai: GenAiClient, params: GenerateParams, attempts = 2) {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (i < attempts - 1 && /503|unavailable|overloaded|high demand/i.test(msg)) {
+        await new Promise((r) => setTimeout(r, 1200));
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
 export type UserHealthContext = {
   timezone: string;
   knownAllergies?: string[];
@@ -109,7 +131,7 @@ export async function parseLogSession(
     throw new Error("Nothing to parse: provide audio or text.");
   }
 
-  const response = await ai.models.generateContent({
+  const response = await generateWithRetry(ai, {
     model: input.model,
     contents: [{ role: "user", parts }],
     config: {
