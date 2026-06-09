@@ -125,4 +125,10 @@ export interface DataStore {
 
   // bulk read for stats / correlation
   getCorrelationDataset(range?: DateRange): Promise<CorrelationDataset>;
+
+  // destructive
+  /** Delete every entry (and the summary) for a given day. */
+  deleteDay(date: ISODate): Promise<void>;
+  /** Wipe all logged data for the current user (keeps account / profile / settings). */
+  clearAllData(): Promise<void>;
 }

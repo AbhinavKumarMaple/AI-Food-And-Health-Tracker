@@ -466,4 +466,34 @@ export class LocalDataStore implements DataStore {
       hydration: await this.listHydration(range),
     };
   }
+
+  // ---- destructive --------------------------------------------------------
+
+  async deleteDay(date: ISODate): Promise<void> {
+    const notOnDate = <T extends { occurredAt: string }>(arr: T[]) =>
+      arr.filter((x) => toISODate(x.occurredAt) !== date);
+    this.write("meals", notOnDate(this.read<Meal[]>("meals", [])));
+    this.write("symptoms", notOnDate(this.read<Symptom[]>("symptoms", [])));
+    this.write("moods", notOnDate(this.read<Mood[]>("moods", [])));
+    this.write("hydration", notOnDate(this.read<HydrationLog[]>("hydration", [])));
+    this.write(
+      "daySummaries",
+      this.read<DaySummary[]>("daySummaries", []).filter((s) => s.date !== date),
+    );
+  }
+
+  async clearAllData(): Promise<void> {
+    for (const key of [
+      "meals",
+      "symptoms",
+      "moods",
+      "hydration",
+      "daySummaries",
+      "sessions",
+      "followUps",
+      "insights",
+    ]) {
+      this.write(key, []);
+    }
+  }
 }

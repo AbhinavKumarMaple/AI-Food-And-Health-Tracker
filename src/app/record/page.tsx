@@ -6,7 +6,6 @@ import { X, Pause, Play, Check, Square, Info, Loader2 } from "lucide-react";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import { useRecorder, formatElapsed, blobToBase64 } from "@/lib/useRecorder";
-import { StatusBar } from "@/components/StatusBar";
 import { SayGuideSheet } from "@/components/SayGuideSheet";
 
 export default function RecordPage() {
@@ -90,8 +89,6 @@ export default function RecordPage() {
 
   return (
     <div className="relative flex h-dvh flex-col bg-[#1a1a1a] text-white">
-      <StatusBar dark />
-
       {/* Top bar */}
       <div className="flex items-center justify-between px-5 py-3">
         <button

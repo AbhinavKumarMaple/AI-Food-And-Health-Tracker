@@ -5,7 +5,12 @@ import { Utensils, Droplets, Activity, Flame, Sparkles } from "lucide-react";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import { computeStats, type Stats } from "@/lib/patterns/stats";
-import { computeCorrelations, correlationsToInsights } from "@/lib/patterns/correlate";
+import {
+  computeCorrelations,
+  correlationsToInsights,
+  type InsightEvidence,
+  type EvidenceTier,
+} from "@/lib/patterns/correlate";
 import type { Insight } from "@/lib/store/types";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
@@ -32,7 +37,7 @@ export default function StatsPage() {
       const store = getStore();
       const data = await store.getCorrelationDataset();
       setStats(computeStats(data, range));
-      const correlations = computeCorrelations(data, { lagWindowHours: 6 });
+      const correlations = computeCorrelations(data);
       const end = new Date();
       const start = new Date();
       start.setDate(end.getDate() - range);
@@ -121,32 +126,60 @@ export default function StatsPage() {
             <Card>
               <p className="text-[13px] text-muted">
                 Keep logging meals and how you feel — once a food shows up enough times, Avni will
-                surface likely triggers here.
+                surface likely triggers here, with the statistical strength behind each one.
               </p>
             </Card>
           ) : (
-            insights.map((ins, i) => (
-              <Card key={i}>
-                <div className="flex items-start gap-3">
-                  <IconBadge icon={Sparkles} tone="orange" size={36} />
-                  <div className="flex flex-1 flex-col gap-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[15px] font-semibold capitalize text-ink" style={{ fontFamily: "var(--font-display)" }}>
-                        {ins.title}
-                      </span>
-                      <span className="rounded bg-primary-tint px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-primary-press">AI</span>
-                    </div>
-                    <p className="text-[13px] leading-snug text-muted">{ins.description}</p>
-                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-line">
-                      <div className="h-full rounded-full bg-primary" style={{ width: `${Math.round((ins.strength ?? 0) * 100)}%` }} />
+            insights.map((ins, i) => {
+              const ev = ins.evidence as InsightEvidence | undefined;
+              return (
+                <Card key={i}>
+                  <div className="flex items-start gap-3">
+                    <IconBadge icon={Sparkles} tone="orange" size={36} />
+                    <div className="flex flex-1 flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[15px] font-semibold capitalize text-ink" style={{ fontFamily: "var(--font-display)" }}>
+                          {ins.title}
+                        </span>
+                        {ev && <TierBadge tier={ev.tier} />}
+                      </div>
+                      <p className="text-[13px] leading-snug text-muted">{ins.description}</p>
+                      {ev && (
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-faint" style={{ fontFamily: "var(--font-label)" }}>
+                          <span>{ev.lift >= 99 ? "≫ usual" : `${ev.lift.toFixed(1)}× lift`}</span>
+                          <span>{ev.hits}/{ev.exposures} times</span>
+                          <span>{ev.windowHours}h window</span>
+                          <span>p {ev.qValue < 0.001 ? "<0.001" : ev.qValue.toFixed(3)}</span>
+                        </div>
+                      )}
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-line">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.round((ins.strength ?? 0) * 100)}%` }} />
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Card>
-            ))
+                </Card>
+              );
+            })
           )}
         </section>
       </div>
     </Screen>
+  );
+}
+
+function TierBadge({ tier }: { tier: EvidenceTier }) {
+  const map = {
+    strong: { label: "Strong", cls: "bg-success-tint text-success" },
+    likely: { label: "Likely", cls: "bg-primary-tint text-primary-press" },
+    emerging: { label: "Emerging", cls: "bg-warm text-muted" },
+  } as const;
+  const t = map[tier];
+  return (
+    <span
+      className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${t.cls}`}
+      style={{ fontFamily: "var(--font-label)" }}
+    >
+      {t.label}
+    </span>
   );
 }

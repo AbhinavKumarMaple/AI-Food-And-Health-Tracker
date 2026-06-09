@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ChevronLeft, MoreHorizontal, Utensils, Activity, Droplets, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, MoreHorizontal, Utensils, Activity, Droplets, CheckCircle2, Trash2 } from "lucide-react";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import type { DayDetail } from "@/lib/store/types";
@@ -24,10 +24,25 @@ export default function DayDetailPage() {
   const { date } = useParams<{ date: string }>();
   const { user, loading } = useAuth();
   const [day, setDay] = useState<DayDetail | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirm, setConfirm] = useState<"day" | "all" | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const refresh = useCallback(async () => {
     setDay(await getStore().getDay(date));
   }, [date]);
+
+  async function runDelete() {
+    setDeleting(true);
+    const store = getStore();
+    if (confirm === "day") {
+      await store.deleteDay(date);
+      router.replace("/history");
+    } else {
+      await store.clearAllData();
+      router.replace("/");
+    }
+  }
 
   useEffect(() => {
     if (user) refresh();
@@ -77,9 +92,41 @@ export default function DayDetailPage() {
             {dateObj.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}
           </span>
         </div>
-        <button className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-muted">
-          <MoreHorizontal size={18} />
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="More"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-muted"
+          >
+            <MoreHorizontal size={18} />
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-11 z-40 w-52 overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_8px_30px_rgba(0,0,0,0.14)]">
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setConfirm("day");
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-[13px] font-medium text-danger active:bg-warm"
+                >
+                  <Trash2 size={15} /> Delete this day
+                </button>
+                <div className="h-px bg-line" />
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setConfirm("all");
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-[13px] font-medium text-danger active:bg-warm"
+                >
+                  <Trash2 size={15} /> Clear all history
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-5 px-5 pb-8 pt-1">
@@ -147,6 +194,70 @@ export default function DayDetailPage() {
           )}
         </section>
       </div>
+
+      {confirm && (
+        <ConfirmDialog
+          title={confirm === "day" ? "Delete this day?" : "Clear all history?"}
+          message={
+            confirm === "day"
+              ? "This removes every meal, symptom, mood and water entry logged on this day. This can't be undone."
+              : "This permanently deletes all of your logged history. Your account and settings stay. This can't be undone."
+          }
+          confirmLabel={confirm === "day" ? "Delete day" : "Delete everything"}
+          busy={deleting}
+          onCancel={() => setConfirm(null)}
+          onConfirm={runDelete}
+        />
+      )}
     </Screen>
+  );
+}
+
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+      <div className="absolute inset-0 bg-black/40 animate-[avni-fade_0.2s_ease-out]" onClick={onCancel} />
+      <div className="relative z-10 w-full max-w-[22rem] rounded-3xl bg-canvas p-5 shadow-[0_20px_50px_rgba(0,0,0,0.25)]">
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-danger-tint text-danger">
+            <Trash2 size={17} />
+          </span>
+          <h2 className="text-[17px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+            {title}
+          </h2>
+        </div>
+        <p className="mb-5 text-[13px] leading-relaxed text-muted">{message}</p>
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="h-11 flex-1 rounded-2xl border border-line bg-surface text-[14px] font-semibold text-muted"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            className="h-11 flex-1 rounded-2xl bg-danger text-[14px] font-semibold text-white disabled:opacity-60"
+          >
+            {busy ? "Deleting…" : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

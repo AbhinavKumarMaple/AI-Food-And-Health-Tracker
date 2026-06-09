@@ -1,42 +1,78 @@
 import type { CorrelationDataset, Insight, Meal, Symptom } from "@/lib/store/types";
+import {
+  baselineWindowProbability,
+  benjaminiHochberg,
+  binomialUpperTail,
+  lift as liftRatio,
+} from "./significance";
+import { plausibleMechanism, windowHoursFor } from "./knowledge";
 
 export type CorrelationOptions = {
-  lagWindowHours?: number; // how long after eating a symptom may appear
   minExposures?: number; // min times a food was eaten to be considered
   minHits?: number; // min co-occurrences (unless explicitly suspected)
   maxResults?: number;
 };
+
+export type EvidenceTier = "strong" | "likely" | "emerging";
 
 export type Correlation = {
   subjectKind: "food" | "tag";
   subjectValue: string;
   objectKind: "symptom_type";
   objectValue: string;
-  exposureCount: number;
+  exposureCount: number; // times the food was eaten
   supportCount: number; // hits: exposures followed by the symptom in-window
-  confidence: number; // supportCount / exposureCount
+  confidence: number; // hits / exposures = P(symptom | food)
+  baseline: number; // P(symptom in a random window) = background rate
+  lift: number; // confidence / baseline (>1 = positive association)
+  pValue: number; // one-sided binomial tail
+  qValue: number; // Benjamini-Hochberg FDR-adjusted p
   avgLagMinutes: number;
+  windowHours: number; // physiological look-back window used
   explicitMentions: number; // user explicitly suspected this food
+  plausible: boolean; // matches a known clinical mechanism
+  mechanism: string | null;
+  onset: string | null;
+  evidenceTier: EvidenceTier;
   strength: number; // 0..1 ranking score
+  firstSeen: string | null;
+  lastSeen: string | null;
 };
 
-type Consumption = { key: string; display: string; kind: "food" | "tag"; at: number };
+type Consumption = {
+  key: string;
+  display: string;
+  kind: "food" | "tag";
+  at: number;
+  iso: string;
+  terms: string[];
+};
+
+const LIFT_CAP = 99;
 
 function mealConsumptions(meal: Meal): Consumption[] {
   const at = new Date(meal.occurredAt).getTime();
+  const iso = meal.occurredAt;
   const out: Consumption[] = [];
   const seen = new Set<string>();
   for (const item of meal.items) {
-    const key = `food:${item.canonicalName}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push({ key, display: item.canonicalName, kind: "food", at });
+    const foodKey = `food:${item.canonicalName}`;
+    if (!seen.has(foodKey)) {
+      seen.add(foodKey);
+      out.push({
+        key: foodKey,
+        display: item.canonicalName,
+        kind: "food",
+        at,
+        iso,
+        terms: [item.name, item.canonicalName, item.foodCategory ?? "", ...item.tags],
+      });
     }
     for (const tag of item.tags) {
-      const tkey = `tag:${tag.toLowerCase()}`;
-      if (!seen.has(tkey)) {
-        seen.add(tkey);
-        out.push({ key: tkey, display: tag, kind: "tag", at });
+      const tagKey = `tag:${tag.toLowerCase()}`;
+      if (!seen.has(tagKey)) {
+        seen.add(tagKey);
+        out.push({ key: tagKey, display: tag, kind: "tag", at, iso, terms: [tag] });
       }
     }
   }
@@ -45,26 +81,41 @@ function mealConsumptions(meal: Meal): Consumption[] {
 
 function explicitlySuspects(symptom: Symptom, display: string): boolean {
   const needle = display.toLowerCase();
-  return symptom.triggers.some((t) =>
-    (t.suspectedFoodText ?? "").toLowerCase().includes(needle),
-  );
+  return symptom.triggers.some((t) => (t.suspectedFoodText ?? "").toLowerCase().includes(needle));
+}
+
+function tierFor(q: number, lift: number, hits: number): EvidenceTier {
+  if (q < 0.05 && lift >= 2 && hits >= 3) return "strong";
+  if (q < 0.2 && lift >= 1.5 && hits >= 2) return "likely";
+  return "emerging";
 }
 
 /**
- * Find food/tag → symptom correlations using a time-lag window. A "hit" is a
- * consumption followed by that symptom type within the window. User-suspected
- * triggers boost a correlation's strength.
+ * Detect food/ingredient/tag → symptom correlations using a case-crossover-style
+ * exposure model: each consumption is followed (or not) by the symptom within a
+ * physiological window; we compare that hit-rate to the person's background rate
+ * (lift) and test significance (binomial tail + Benjamini-Hochberg FDR).
  */
 export function computeCorrelations(
   dataset: CorrelationDataset,
   options: CorrelationOptions = {},
 ): Correlation[] {
-  const lagMs = (options.lagWindowHours ?? 6) * 3600_000;
   const minExposures = options.minExposures ?? 3;
   const minHits = options.minHits ?? 2;
-  const maxResults = options.maxResults ?? 8;
+  const maxResults = options.maxResults ?? 10;
 
-  const symptomTypes = Array.from(new Set(dataset.symptoms.map((s) => s.symptomType)));
+  if (dataset.symptoms.length === 0 || dataset.meals.length === 0) return [];
+
+  // Observation span (hours) across all logged events.
+  const allTimes = [
+    ...dataset.meals.map((m) => new Date(m.occurredAt).getTime()),
+    ...dataset.symptoms.map((s) => new Date(s.occurredAt).getTime()),
+  ];
+  const minTs = Math.min(...allTimes);
+  const maxTs = Math.max(...allTimes);
+  const spanHours = Math.max(1, (maxTs - minTs) / 3_600_000);
+
+  // Symptom occurrences grouped by type.
   const symptomsByType = new Map<string, Symptom[]>();
   for (const s of dataset.symptoms) {
     const list = symptomsByType.get(s.symptomType) ?? [];
@@ -72,34 +123,37 @@ export function computeCorrelations(
     symptomsByType.set(s.symptomType, list);
   }
 
-  // Index all consumptions by key.
-  const consumptionsByKey = new Map<string, Consumption[]>();
+  // Consumptions grouped by food/tag key.
+  const byKey = new Map<string, Consumption[]>();
   for (const meal of dataset.meals) {
     for (const c of mealConsumptions(meal)) {
-      const list = consumptionsByKey.get(c.key) ?? [];
+      const list = byKey.get(c.key) ?? [];
       list.push(c);
-      consumptionsByKey.set(c.key, list);
+      byKey.set(c.key, list);
     }
   }
 
-  const results: Correlation[] = [];
+  type Candidate = Omit<Correlation, "qValue" | "evidenceTier" | "strength">;
+  const candidates: Candidate[] = [];
 
-  for (const consumptions of consumptionsByKey.values()) {
+  for (const consumptions of byKey.values()) {
     if (consumptions.length < minExposures) continue;
     const { kind, display } = consumptions[0];
+    const terms = consumptions[0].terms;
+    const sortedIso = consumptions.map((c) => c.iso).sort();
 
-    for (const symptomType of symptomTypes) {
-      const symptoms = symptomsByType.get(symptomType) ?? [];
+    for (const [symptomType, symptoms] of symptomsByType) {
+      const windowHours = windowHoursFor(symptomType);
+      const windowMs = windowHours * 3_600_000;
       const symptomTimes = symptoms.map((s) => new Date(s.occurredAt).getTime());
 
       let hits = 0;
       let lagSum = 0;
       for (const c of consumptions) {
-        // earliest symptom of this type within (0, lag] after the consumption
         let bestLag = Infinity;
         for (const t of symptomTimes) {
           const lag = t - c.at;
-          if (lag > 0 && lag <= lagMs && lag < bestLag) bestLag = lag;
+          if (lag > 0 && lag <= windowMs && lag < bestLag) bestLag = lag;
         }
         if (bestLag !== Infinity) {
           hits += 1;
@@ -112,13 +166,13 @@ export function computeCorrelations(
 
       const exposureCount = consumptions.length;
       const confidence = hits / exposureCount;
+      const baseline = baselineWindowProbability(symptoms.length, spanHours, windowHours);
+      const liftValue = Math.min(LIFT_CAP, liftRatio(confidence, baseline));
+      const pValue = binomialUpperTail(hits, exposureCount, baseline);
       const avgLagMinutes = hits > 0 ? Math.round(lagSum / hits / 60000) : 0;
-      const strength = Math.min(
-        1,
-        confidence * 0.75 + (explicitMentions > 0 ? 0.25 : 0),
-      );
+      const match = plausibleMechanism(terms, symptomType);
 
-      results.push({
+      candidates.push({
         subjectKind: kind,
         subjectValue: display,
         objectKind: "symptom_type",
@@ -126,26 +180,72 @@ export function computeCorrelations(
         exposureCount,
         supportCount: hits,
         confidence,
+        baseline,
+        lift: liftValue,
+        pValue,
         avgLagMinutes,
+        windowHours,
         explicitMentions,
-        strength,
+        plausible: match != null,
+        mechanism: match?.mechanism ?? null,
+        onset: match?.onset ?? null,
+        firstSeen: sortedIso[0] ?? null,
+        lastSeen: sortedIso[sortedIso.length - 1] ?? null,
       });
     }
   }
 
+  if (candidates.length === 0) return [];
+
+  // Multiple-comparison correction across everything we tested.
+  const qValues = benjaminiHochberg(candidates.map((c) => c.pValue));
+
+  const results: Correlation[] = candidates.map((c, i) => {
+    const q = qValues[i];
+    const evidenceTier = tierFor(q, c.lift, c.supportCount);
+    const sig = 1 - Math.min(q, 1);
+    const liftScore = Math.min(1, Math.max(0, (c.lift - 1) / 3));
+    const strength = Math.min(
+      1,
+      0.5 * sig + 0.3 * liftScore + (c.plausible ? 0.1 : 0) + (c.explicitMentions > 0 ? 0.1 : 0),
+    );
+    return { ...c, qValue: q, evidenceTier, strength };
+  });
+
+  // Surface only associations with some evidence; the tier conveys confidence.
   return results
+    .filter((c) => c.qValue < 0.3 || c.explicitMentions > 0 || c.plausible)
     .sort((a, b) => b.strength - a.strength || b.supportCount - a.supportCount)
     .slice(0, maxResults);
 }
 
 function lagPhrase(minutes: number): string {
   if (minutes <= 0) return "soon after";
-  if (minutes < 90) return `within about ${minutes} min`;
-  const hours = Math.round(minutes / 60);
-  return `within about ${hours}h`;
+  if (minutes < 90) return `~${minutes} min later`;
+  return `~${Math.round(minutes / 60)} h later`;
 }
 
-/** Turn correlations into persistable Insight drafts with friendly copy. */
+function liftPhrase(lift: number): string {
+  if (lift >= LIFT_CAP) return "far more often than usual";
+  if (lift >= 1.2) return `about ${lift.toFixed(1)}× more often than usual`;
+  return "around your usual rate";
+}
+
+export type InsightEvidence = {
+  lift: number;
+  pValue: number;
+  qValue: number;
+  tier: EvidenceTier;
+  windowHours: number;
+  hits: number;
+  exposures: number;
+  plausible: boolean;
+  mechanism: string | null;
+  onset: string | null;
+  explicit: boolean;
+};
+
+/** Turn correlations into persistable Insight drafts with evidence-rich copy. */
 export function correlationsToInsights(
   correlations: Correlation[],
   period: { start: string; end: string },
@@ -153,7 +253,26 @@ export function correlationsToInsights(
   return correlations.map((c) => {
     const subject = capitalize(c.subjectValue);
     const pct = Math.round(c.confidence * 100);
-    const explicit = c.explicitMentions > 0 ? " You've also flagged this yourself." : "";
+    const parts = [
+      `${subject} preceded ${c.objectValue} in ${c.supportCount} of ${c.exposureCount} times (${pct}%), ${lagPhrase(c.avgLagMinutes)} — ${liftPhrase(c.lift)}.`,
+    ];
+    if (c.mechanism) parts.push(`Consistent with: ${c.mechanism} (typical onset ${c.onset}).`);
+    if (c.explicitMentions > 0) parts.push("You've flagged this yourself, too.");
+
+    const evidence: InsightEvidence = {
+      lift: c.lift,
+      pValue: c.pValue,
+      qValue: c.qValue,
+      tier: c.evidenceTier,
+      windowHours: c.windowHours,
+      hits: c.supportCount,
+      exposures: c.exposureCount,
+      plausible: c.plausible,
+      mechanism: c.mechanism,
+      onset: c.onset,
+      explicit: c.explicitMentions > 0,
+    };
+
     return {
       insightType: "food_symptom_correlation",
       subjectKind: c.subjectKind,
@@ -161,7 +280,7 @@ export function correlationsToInsights(
       objectKind: "symptom_type",
       objectValue: c.objectValue,
       title: `${subject} → ${c.objectValue}`,
-      description: `${subject} preceded ${c.objectValue} ${c.supportCount} of ${c.exposureCount} times (${pct}%), ${lagPhrase(c.avgLagMinutes)}.${explicit}`,
+      description: parts.join(" "),
       strength: c.strength,
       supportCount: c.supportCount,
       exposureCount: c.exposureCount,
@@ -170,10 +289,7 @@ export function correlationsToInsights(
       periodStart: period.start,
       periodEnd: period.end,
       status: "active",
-      evidence: {
-        subjectKind: c.subjectKind,
-        explicitMentions: c.explicitMentions,
-      },
+      evidence,
     };
   });
 }
