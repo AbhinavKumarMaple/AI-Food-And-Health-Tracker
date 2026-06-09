@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles } from "lucide-react";
+import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles, Bell, Info } from "lucide-react";
+import { SayGuideSheet } from "@/components/SayGuideSheet";
 import { getStore } from "@/lib/store";
 import type { DayDetail, UserSettings } from "@/lib/store/types";
 import { todayISODate } from "@/lib/store/util";
@@ -29,6 +30,7 @@ export default function TodayPage() {
   const [day, setDay] = useState<DayDetail | null>(null);
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [seeding, setSeeding] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   const refresh = useCallback(async () => {
     const store = getStore();
@@ -77,13 +79,16 @@ export default function TodayPage() {
   return (
     <Screen>
       {/* Header */}
-      <GradientPanel variant="amber" rounded="rounded-b-[2rem]" className="px-6 pb-7 pt-5">
-        <p
-          className="text-[11px] font-bold tracking-[0.12em] text-white/80"
-          style={{ fontFamily: "var(--font-label)" }}
-        >
-          {dateLabel}
-        </p>
+      <GradientPanel variant="amber" rounded="rounded-b-[2rem]" className="px-6 pb-16 pt-5">
+        <div className="flex items-center justify-between">
+          <p
+            className="text-[11px] font-bold tracking-[0.12em] text-white/80"
+            style={{ fontFamily: "var(--font-label)" }}
+          >
+            {dateLabel}
+          </p>
+          <Bell size={18} className="text-white/85" />
+        </div>
         <p className="mt-3 text-[15px] text-white/85">{greeting()},</p>
         <h1
           className="text-[34px] font-extrabold leading-tight text-white"
@@ -98,11 +103,11 @@ export default function TodayPage() {
         </p>
       </GradientPanel>
 
-      <div className="flex flex-col gap-6 px-5 pb-8">
-        {/* Tap to talk */}
+      <div className="flex flex-col gap-5 px-5 pb-8">
+        {/* Tap to talk (overlaps the hero, matching the design) */}
         <Link
           href="/record"
-          className="-mt-10 flex items-center gap-4 rounded-3xl border border-line bg-surface p-4 shadow-[0_6px_20px_rgba(0,0,0,0.08)]"
+          className="relative z-10 -mt-10 flex items-center gap-4 rounded-3xl border border-line bg-surface p-4 shadow-[0_8px_24px_rgba(124,52,15,0.18)]"
         >
           <div className="flex flex-1 flex-col gap-1">
             <span
@@ -120,6 +125,13 @@ export default function TodayPage() {
             <Mic size={24} />
           </span>
         </Link>
+
+        <button
+          onClick={() => setShowGuide(true)}
+          className="-mt-1 flex items-center gap-1.5 self-center rounded-full px-3 py-1 text-[12.5px] font-medium text-muted"
+        >
+          <Info size={14} className="text-primary" /> What can I say?
+        </button>
 
         {!settings?.geminiApiKey && (
           <Link
@@ -178,6 +190,8 @@ export default function TodayPage() {
           )}
         </section>
       </div>
+
+      <SayGuideSheet open={showGuide} onClose={() => setShowGuide(false)} />
     </Screen>
   );
 }

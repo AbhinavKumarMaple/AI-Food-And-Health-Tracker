@@ -3,10 +3,10 @@ import { cn } from "@/lib/cn";
 type Variant = "dark" | "orange" | "amber";
 
 /**
- * Rounded hero panel with the layered radial "ribbon" glow from the design.
- * - dark   → near-black with warm orange blobs (History / Review header)
- * - orange → vivid orange gradient (Stats hero)
- * - amber  → warm amber header (Today greeting)
+ * Rounded hero panel. The "dark" and "amber" heroes (History / Review / Today)
+ * use the exact ribbon artwork exported from the Pencil design
+ * (public/heroes/ribbon.png). The "orange" hero (Stats) uses the design's
+ * #FF5C00→#FF8533 linear gradient.
  */
 export function GradientPanel({
   variant = "dark",
@@ -19,30 +19,19 @@ export function GradientPanel({
   children: React.ReactNode;
   rounded?: string;
 }) {
-  const base =
-    variant === "dark"
-      ? "bg-[#1a1a1a]"
-      : variant === "orange"
-        ? "bg-[#ff5c00]"
-        : "bg-[#e8530a]";
+  const isRibbon = variant === "dark" || variant === "amber";
+  const variantClass = isRibbon
+    ? "bg-[#1a1a1a] bg-[url('/heroes/ribbon.png')] bg-cover bg-top"
+    : "bg-[linear-gradient(135deg,#ff5c00_0%,#ff8533_100%)]";
 
   return (
-    <div className={cn("relative overflow-hidden", rounded, base, className)}>
-      {/* decorative ribbon blobs */}
-      <div className="pointer-events-none absolute inset-0">
-        {variant === "dark" ? (
-          <>
-            <div className="absolute -left-24 -top-20 h-72 w-[28rem] rounded-full bg-[radial-gradient(closest-side,#ff5c00cc,transparent)] opacity-80" />
-            <div className="absolute left-24 -top-10 h-64 w-[26rem] rounded-full bg-[radial-gradient(closest-side,#ff8533aa,transparent)] opacity-70" />
-            <div className="absolute -left-10 top-24 h-64 w-[28rem] rounded-full bg-[radial-gradient(closest-side,#ffb380aa,transparent)] opacity-60" />
-          </>
-        ) : (
-          <>
-            <div className="absolute -right-16 -top-16 h-60 w-80 rounded-full bg-[radial-gradient(closest-side,#ffffff55,transparent)]" />
-            <div className="absolute -left-10 bottom-0 h-56 w-80 rounded-full bg-[radial-gradient(closest-side,#ffb38066,transparent)]" />
-          </>
-        )}
-      </div>
+    <div className={cn("relative overflow-hidden", rounded, variantClass, className)}>
+      {variant === "orange" && (
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -right-16 -top-16 h-60 w-80 rounded-full bg-[radial-gradient(closest-side,#ffffff44,transparent)]" />
+          <div className="absolute -left-10 bottom-0 h-56 w-80 rounded-full bg-[radial-gradient(closest-side,#ffb38055,transparent)]" />
+        </div>
+      )}
       <div className="relative">{children}</div>
     </div>
   );

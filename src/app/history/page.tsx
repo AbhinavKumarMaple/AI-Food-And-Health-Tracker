@@ -7,7 +7,6 @@ import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import type { DaySummary } from "@/lib/store/types";
 import { toISODate } from "@/lib/store/util";
-import { formatLitres } from "@/lib/format";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { GradientPanel } from "@/components/GradientPanel";

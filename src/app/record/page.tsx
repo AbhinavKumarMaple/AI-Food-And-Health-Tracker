@@ -7,6 +7,7 @@ import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import { useRecorder, formatElapsed, blobToBase64 } from "@/lib/useRecorder";
 import { StatusBar } from "@/components/StatusBar";
+import { SayGuideSheet } from "@/components/SayGuideSheet";
 
 export default function RecordPage() {
   const router = useRouter();
@@ -15,6 +16,7 @@ export default function RecordPage() {
   const [note, setNote] = useState("");
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
   const started = useRef(false);
 
   useEffect(() => {
@@ -102,9 +104,13 @@ export default function RecordPage() {
           <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
           {rec.state === "paused" ? "PAUSED" : "RECORDING"}
         </span>
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10">
+        <button
+          onClick={() => setShowGuide(true)}
+          aria-label="What can I say?"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10"
+        >
           <Info size={18} />
-        </span>
+        </button>
       </div>
 
       <div className="flex flex-1 flex-col items-center justify-center px-6">
@@ -182,6 +188,8 @@ export default function RecordPage() {
           <p className="text-[14px] text-white/80">Organising what you said…</p>
         </div>
       )}
+
+      <SayGuideSheet open={showGuide} onClose={() => setShowGuide(false)} />
     </div>
   );
 }

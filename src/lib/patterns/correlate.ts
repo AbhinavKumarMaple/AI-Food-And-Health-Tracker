@@ -84,7 +84,7 @@ export function computeCorrelations(
 
   const results: Correlation[] = [];
 
-  for (const [key, consumptions] of consumptionsByKey) {
+  for (const consumptions of consumptionsByKey.values()) {
     if (consumptions.length < minExposures) continue;
     const { kind, display } = consumptions[0];
 

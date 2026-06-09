@@ -76,3 +76,21 @@ body {
     transform: scaleY(1);
   }
 }
+
+@keyframes avni-sheet {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes avni-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

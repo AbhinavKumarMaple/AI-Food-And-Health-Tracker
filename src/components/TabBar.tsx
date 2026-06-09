@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Sun, History, BarChart3, User, type LucideIcon } from "lucide-react";
-import { cn } from "@/lib/cn";
 
 type Tab = { href: string; label: string; icon: LucideIcon };
 
