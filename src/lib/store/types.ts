@@ -46,6 +46,10 @@ export interface User {
   medications: string[];
   dietaryPattern?: string | null;
   healthGoals: string[];
+  /** Region/city, e.g. "Pune, Maharashtra, India" — helps the AI read regional food names. */
+  location?: string | null;
+  /** Languages the user mixes when speaking, e.g. ["Marathi", "Hindi", "English"]. */
+  languages: string[];
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }

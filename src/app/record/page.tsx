@@ -7,6 +7,32 @@ import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import { useRecorder, formatElapsed, blobToBase64 } from "@/lib/useRecorder";
 import { SayGuideSheet } from "@/components/SayGuideSheet";
+import type { User } from "@/lib/store/types";
+
+// Map a spoken language to a BCP-47 locale for the browser's live transcript.
+const SPEECH_LANG: Record<string, string> = {
+  hindi: "hi-IN",
+  marathi: "mr-IN",
+  tamil: "ta-IN",
+  telugu: "te-IN",
+  bengali: "bn-IN",
+  gujarati: "gu-IN",
+  kannada: "kn-IN",
+  malayalam: "ml-IN",
+  punjabi: "pa-IN",
+  urdu: "ur-IN",
+  odia: "or-IN",
+  english: "en-IN",
+};
+
+/** Indian-English by default; a regional language if the user lists one first. */
+function speechLangFor(languages?: string[]): string {
+  for (const l of languages ?? []) {
+    const code = SPEECH_LANG[l.trim().toLowerCase()];
+    if (code && code !== "en-IN") return code;
+  }
+  return "en-IN";
+}
 
 export default function RecordPage() {
   const router = useRouter();
@@ -17,12 +43,22 @@ export default function RecordPage() {
   const [error, setError] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const started = useRef(false);
+  const profileRef = useRef<User | null>(null);
 
   useEffect(() => {
-    if (user && !started.current) {
-      started.current = true;
-      rec.start();
-    }
+    if (!user || started.current) return;
+    started.current = true;
+    (async () => {
+      let lang = "en-IN";
+      try {
+        const p = await getStore().getProfile();
+        profileRef.current = p;
+        lang = speechLangFor(p.languages);
+      } catch {
+        // fall back to Indian English
+      }
+      rec.start(lang);
+    })();
   }, [user, rec]);
 
   async function finish() {
@@ -31,7 +67,7 @@ export default function RecordPage() {
     const result = await rec.stop();
     const store = getStore();
     const settings = await store.getSettings();
-    const profile = await store.getProfile();
+    const profile = profileRef.current ?? (await store.getProfile());
 
     if (!settings.geminiApiKey) {
       setError("Add your Gemini API key in Settings to process recordings.");
@@ -61,6 +97,8 @@ export default function RecordPage() {
             intolerances: profile.intolerances,
             chronicConditions: profile.chronicConditions,
             dietaryPattern: profile.dietaryPattern,
+            location: profile.location,
+            languages: profile.languages,
           },
         }),
       });

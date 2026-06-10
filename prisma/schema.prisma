@@ -101,6 +101,11 @@ model User {
   dietaryPattern    String?
   healthGoals       String[] @default([])
 
+  // Region + spoken languages — given to the AI so it transcribes and corrects
+  // regional Indian food names (e.g. bhakri, thecha, pithla) accurately.
+  location  String?
+  languages String[] @default([])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

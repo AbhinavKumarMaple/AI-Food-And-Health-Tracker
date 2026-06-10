@@ -29,6 +29,8 @@ export type UserHealthContext = {
   intolerances?: string[];
   chronicConditions?: string[];
   dietaryPattern?: string | null;
+  location?: string | null;
+  languages?: string[];
 };
 
 export type ParseLogInput = {
@@ -65,6 +67,20 @@ Goals:
   entry via targetType + targetIndex.
 - Also include a one-sentence friendly "recap" and the verbatim "transcript" of any audio.
 
+Regional & multilingual handling (important):
+- The user may be Indian and speak English code-mixed with a regional language (Hindi, Marathi, Tamil,
+  Telugu, Bengali, Gujarati, Kannada, Punjabi, Malayalam, Odia, etc.). Food names are often vernacular.
+- Use the user's stated LOCATION and LANGUAGES to accurately TRANSCRIBE regional dishes AND to CORRECT
+  likely mis-hearings phonetically. Examples: "bhakar"/"bhakri" = a jowar/bajra flatbread similar to roti
+  (Maharashtra); "thecha" = spicy chilli-garlic chutney; "pithla" = chickpea-flour curry; "poha" = flattened
+  rice; "upma" = semolina; "dal" = lentils; "sabzi" = vegetable dish; "chaas" = buttermilk.
+- Preserve the dish's spoken/native name in the item "name"; set "canonicalName" to a normalized lowercase
+  form; when helpful, add a short English gloss in the meal "description" (e.g. "Bhakri (millet flatbread)").
+- Infer ingredients, foodCategory and tags from the dish (bhakri → millet flatbread → grain, Fiber;
+  thecha → chilli+garlic → Spicy; dal → lentils → Protein; dahi/curd → Dairy).
+- If a word is ambiguous or sounds mis-transcribed, prefer the closest real Indian dish for the user's
+  region and lower the "aiConfidence" for that item.
+
 Output ONLY JSON matching the requested shape. No markdown, no commentary.`;
 
 function buildContextText(input: ParseLogInput): string {
@@ -80,6 +96,9 @@ function buildContextText(input: ParseLogInput): string {
   if (user.chronicConditions?.length)
     lines.push(`Chronic conditions: ${user.chronicConditions.join(", ")}`);
   if (user.dietaryPattern) lines.push(`Dietary pattern: ${user.dietaryPattern}`);
+  if (user.location) lines.push(`User location/region: ${user.location}`);
+  if (user.languages?.length)
+    lines.push(`Languages the user mixes when speaking: ${user.languages.join(", ")}`);
   lines.push("");
   lines.push(
     "Required JSON shape (use null/[] when unknown): { transcript, recap, " +

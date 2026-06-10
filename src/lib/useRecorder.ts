@@ -55,7 +55,7 @@ export function useRecorder() {
     rafRef.current = requestAnimationFrame(drawLoop);
   }, []);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (lang?: string) => {
     setError(null);
     finalRef.current = "";
     setTranscript("");
@@ -95,7 +95,7 @@ export function useRecorder() {
         const rec = new SR();
         rec.continuous = true;
         rec.interimResults = true;
-        rec.lang = navigator.language || "en-US";
+        rec.lang = lang || navigator.language || "en-US";
         rec.onresult = (e) => {
           let interim = "";
           for (let i = e.resultIndex; i < e.results.length; i++) {

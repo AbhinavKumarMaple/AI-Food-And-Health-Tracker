@@ -83,6 +83,8 @@ export class LocalAuth implements AuthService {
       medications: [],
       dietaryPattern: null,
       healthGoals: [],
+      location: null,
+      languages: [],
       createdAt: now,
       updatedAt: now,
       passwordHash,

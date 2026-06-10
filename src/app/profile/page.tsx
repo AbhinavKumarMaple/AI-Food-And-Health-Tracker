@@ -35,6 +35,8 @@ export default function ProfilePage() {
     if (!profile) return;
     await getStore().updateProfile({
       name: profile.name,
+      location: profile.location,
+      languages: profile.languages,
       dietaryPattern: profile.dietaryPattern,
       knownAllergies: profile.knownAllergies,
       intolerances: profile.intolerances,
@@ -85,11 +87,23 @@ export default function ProfilePage() {
             <HeartPulse size={15} className="text-primary" /> Health context
           </h2>
           <p className="px-1 text-[11px] text-faint">
-            Helps Avni flag allergens and tailor follow-up questions to you.
+            Helps Avni read regional food names, flag allergens, and tailor follow-up questions to you.
           </p>
           <Card>
             <div className="flex flex-col gap-3">
               <ProfileField label="Display name" value={profile.name ?? ""} onChange={(v) => set("name", v)} />
+              <ProfileField
+                label="Location / region"
+                placeholder="e.g. Pune, Maharashtra, India"
+                value={profile.location ?? ""}
+                onChange={(v) => set("location", v)}
+              />
+              <ProfileField
+                label="Languages you mix when speaking"
+                placeholder="e.g. Marathi, Hindi, English"
+                value={profile.languages.join(", ")}
+                onChange={(v) => set("languages", splitList(v))}
+              />
               <ProfileField label="Dietary pattern" placeholder="e.g. omnivore, vegetarian" value={profile.dietaryPattern ?? ""} onChange={(v) => set("dietaryPattern", v)} />
               <ProfileField label="Allergies (comma separated)" value={profile.knownAllergies.join(", ")} onChange={(v) => set("knownAllergies", splitList(v))} />
               <ProfileField label="Intolerances" placeholder="e.g. lactose, gluten" value={profile.intolerances.join(", ")} onChange={(v) => set("intolerances", splitList(v))} />

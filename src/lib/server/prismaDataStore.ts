@@ -178,6 +178,8 @@ function userToDomain(r: Row): User {
     medications: (r.medications as string[]) ?? [],
     dietaryPattern: (r.dietaryPattern as string) ?? null,
     healthGoals: (r.healthGoals as string[]) ?? [],
+    location: (r.location as string) ?? null,
+    languages: (r.languages as string[]) ?? [],
     createdAt: (r.createdAt as Date).toISOString(),
     updatedAt: (r.updatedAt as Date).toISOString(),
   };
@@ -265,6 +267,8 @@ export class PrismaDataStore implements DataStore {
         medications: patch.medications ?? undefined,
         dietaryPattern: patch.dietaryPattern ?? undefined,
         healthGoals: patch.healthGoals ?? undefined,
+        location: patch.location ?? undefined,
+        languages: patch.languages ?? undefined,
       },
     });
     return userToDomain(u as Row);
