@@ -6,10 +6,6 @@
 - Local:         http://localhost:3000
 - Network:       http://172.16.0.2:3000
 - Environments: .env
-✓ Ready in 617ms
+✓ Ready in 715ms
 
- GET /login 200 in 656ms (next.js: 349ms, application-code: 307ms)
- POST /api/gemini/parse 200 in 5.3s (next.js: 381ms, application-code: 4.9s)
- GET /profile 200 in 286ms (next.js: 67ms, application-code: 219ms)
- GET /api/auth/me 200 in 3.5s (next.js: 208ms, application-code: 3.3s)
- POST /api/data 200 in 1145ms (next.js: 65ms, application-code: 1080ms)
+ GET /login 200 in 390ms (next.js: 198ms, application-code: 192ms)

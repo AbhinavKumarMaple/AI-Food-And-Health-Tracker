@@ -25,10 +25,10 @@ export const parsedMealItemSchema = z.object({
   quantity: z.number().nullish(),
   unit: z.string().nullish(),
   foodCategory: z.string().nullish(),
-  tags: z.array(z.string()).default([]),
-  isPotentialAllergen: z.boolean().default(false),
+  tags: z.array(z.string()).nullish(),
+  isPotentialAllergen: z.boolean().nullish(),
   allergenType: z.string().nullish(),
-  estimatedCalories: z.number().int().nullish(),
+  estimatedCalories: z.number().nullish(),
 });
 
 export const parsedMealSchema = z.object({
@@ -47,7 +47,7 @@ export const parsedMealSchema = z.object({
   portionSize: z.string().nullish(),
   estimatedCalories: looseNum,
   macros: parsedMacrosSchema.nullish(),
-  items: z.array(parsedMealItemSchema).default([]),
+  items: z.array(parsedMealItemSchema).nullish(),
   completenessScore: looseNum,
   aiConfidence: looseNum,
   notes: z.string().nullish(),

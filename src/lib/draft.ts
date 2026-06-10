@@ -85,7 +85,7 @@ export function draftsFromParseResult(result: ParseResult, sessionId: string): D
     aiConfidence: normConfidence(m.aiConfidence),
     source: "voice",
     notes: m.notes ?? null,
-    items: m.items.map((it) => ({
+    items: (m.items ?? []).map((it) => ({
       name: it.name,
       canonicalName: (it.canonicalName ?? it.name).toLowerCase().trim(),
       quantity: it.quantity ?? null,
