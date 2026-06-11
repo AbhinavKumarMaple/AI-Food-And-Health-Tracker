@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Sparkles, Trash2, Check, Pencil, ChevronLeft, MessageCircleQuestion } from "lucide-react";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
+import { useQueryClient, invalidateEntries } from "@/lib/queries";
 import { parseResultSchema } from "@/lib/gemini/schema";
 import { draftsFromParseResult, type Drafts } from "@/lib/draft";
 import { nowIso, toISODate } from "@/lib/store/util";
@@ -29,6 +30,7 @@ export default function ReviewPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
   const { user, loading } = useAuth();
+  const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<Drafts | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -132,6 +134,7 @@ export default function ReviewPage() {
       drafts.symptoms[0]?.occurredAt ??
       drafts.moods[0]?.occurredAt ??
       nowIso();
+    invalidateEntries(queryClient);
     router.replace(`/day/${toISODate(firstIso)}`);
   }
 

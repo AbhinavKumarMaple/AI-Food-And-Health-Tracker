@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Funnel_Sans, Geist } from "next/font/google";
 import "./globals.css";
+import { Providers } from "@/components/Providers";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -38,7 +39,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${funnel.variable} ${geist.variable}`}>
       <body>
-        <div className="app-frame">{children}</div>
+        <Providers>
+          <div className="app-frame">{children}</div>
+        </Providers>
       </body>
     </html>
   );

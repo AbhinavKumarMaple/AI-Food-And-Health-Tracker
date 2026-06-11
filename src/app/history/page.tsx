@@ -1,19 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Star } from "lucide-react";
-import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
-import type { DaySummary } from "@/lib/store/types";
+import { useDaySummaries } from "@/lib/queries";
 import { toISODate } from "@/lib/store/util";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { RefreshButton } from "@/components/RefreshButton";
-import { HistorySkeleton } from "@/components/skeletons";
 import { GradientPanel } from "@/components/GradientPanel";
 import { SectionHeader } from "@/components/ui";
 import { HistoryRow } from "@/components/journal";
+import { HistorySkeleton, Skeleton, RowsSkeleton } from "@/components/skeletons";
 import { cn } from "@/lib/cn";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -21,18 +20,11 @@ const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 export default function HistoryPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
-  const [summaries, setSummaries] = useState<DaySummary[]>([]);
-
-  const load = useCallback(async () => {
-    setSummaries(await getStore().listDaySummaries());
-  }, []);
-
-  useEffect(() => {
-    if (user) load();
-  }, [user, load]);
-
+  const sumQ = useDaySummaries(!!user);
+  const summaries = sumQ.data;
   const today = toISODate(new Date());
 
+  // Week dates are static (from today); "logged" fills in when data arrives.
   const week = useMemo(() => {
     const out: { date: string; logged: boolean }[] = [];
     const base = new Date();
@@ -40,7 +32,7 @@ export default function HistoryPage() {
       const d = new Date(base);
       d.setDate(base.getDate() - i);
       const iso = toISODate(d);
-      out.push({ date: iso, logged: summaries.some((s) => s.date === iso) });
+      out.push({ date: iso, logged: (summaries ?? []).some((s) => s.date === iso) });
     }
     return out;
   }, [summaries]);
@@ -48,7 +40,7 @@ export default function HistoryPage() {
   const month = useMemo(() => {
     const now = new Date();
     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    const inMonth = summaries.filter((s) => s.date.startsWith(monthKey));
+    const inMonth = (summaries ?? []).filter((s) => s.date.startsWith(monthKey));
     const ratings = inMonth.map((s) => s.overallRating).filter((r): r is number => r != null);
     return {
       label: now.toLocaleDateString([], { month: "long", year: "numeric" }).toUpperCase(),
@@ -75,7 +67,7 @@ export default function HistoryPage() {
         back={false}
         right={
           <div className="flex items-center gap-2">
-            <RefreshButton onRefresh={load} />
+            <RefreshButton loading={sumQ.isFetching} onRefresh={() => sumQ.refetch()} />
             <button className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-muted">
               <Search size={17} />
             </button>
@@ -85,21 +77,19 @@ export default function HistoryPage() {
 
       <div className="flex flex-col gap-5 px-5 pb-8 pt-2">
         {/* Month hero */}
-        <GradientPanel variant="dark" className="p-5">
-          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/70" style={{ fontFamily: "var(--font-label)" }}>
-            {month.label}
-          </span>
-          <h2 className="mt-1 text-[26px] font-extrabold text-white" style={{ fontFamily: "var(--font-display)" }}>
-            {month.daysLogged} days logged
-          </h2>
-          <div className="mt-4 flex gap-6">
-            <HeroStat value={month.avgRating ? month.avgRating.toFixed(1) : "—"} label="avg mood" />
-            <HeroStat value={String(month.meals)} label="meals" />
-            <HeroStat value={String(month.symptoms)} label="symptoms" />
-          </div>
-        </GradientPanel>
+        {summaries ? (
+          <GradientHero
+            label={month.label}
+            daysLogged={month.daysLogged}
+            avgRating={month.avgRating}
+            meals={month.meals}
+            symptoms={month.symptoms}
+          />
+        ) : (
+          <Skeleton className="h-40 rounded-3xl" />
+        )}
 
-        {/* This week */}
+        {/* This week — static dates, fills in logged state */}
         <section className="flex flex-col gap-3">
           <SectionHeader title="This week" />
           <div className="flex justify-between">
@@ -132,7 +122,9 @@ export default function HistoryPage() {
         {/* Recent entries */}
         <section className="flex flex-col gap-3">
           <SectionHeader title="Recent entries" />
-          {summaries.length === 0 ? (
+          {!summaries ? (
+            <RowsSkeleton count={4} />
+          ) : summaries.length === 0 ? (
             <p className="px-1 text-[13px] text-muted">No days logged yet.</p>
           ) : (
             <div className="flex flex-col gap-2.5">
@@ -152,11 +144,41 @@ export default function HistoryPage() {
   );
 }
 
-function HeroStat({ value, label }: { value: string; label: string }) {
+function GradientHero({
+  label,
+  daysLogged,
+  avgRating,
+  meals,
+  symptoms,
+}: {
+  label: string;
+  daysLogged: number;
+  avgRating: number | null;
+  meals: number;
+  symptoms: number;
+}) {
+  return (
+    <GradientPanel variant="dark" className="p-5">
+      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-white/70" style={{ fontFamily: "var(--font-label)" }}>
+        {label}
+      </span>
+      <h2 className="mt-1 text-[26px] font-extrabold text-white" style={{ fontFamily: "var(--font-display)" }}>
+        {daysLogged} days logged
+      </h2>
+      <div className="mt-4 flex gap-6">
+        <HeroStat value={avgRating ? avgRating.toFixed(1) : "—"} label="avg mood" star />
+        <HeroStat value={String(meals)} label="meals" />
+        <HeroStat value={String(symptoms)} label="symptoms" />
+      </div>
+    </GradientPanel>
+  );
+}
+
+function HeroStat({ value, label, star = false }: { value: string; label: string; star?: boolean }) {
   return (
     <div className="flex flex-col">
       <span className="flex items-center gap-1 text-[20px] font-extrabold text-white" style={{ fontFamily: "var(--font-display)" }}>
-        {label === "avg mood" && <Star size={14} className="text-primary" fill="currentColor" />}
+        {star && <Star size={14} className="text-primary" fill="currentColor" />}
         {value}
       </span>
       <span className="text-[11px] text-white/60" style={{ fontFamily: "var(--font-label)" }}>{label}</span>

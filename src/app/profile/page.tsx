@@ -7,6 +7,7 @@ import { Settings, LogOut, Check, ChevronRight, HeartPulse } from "lucide-react"
 import { getAuth, getStore } from "@/lib/store";
 import type { User } from "@/lib/store/types";
 import { useAuth } from "@/lib/useAuth";
+import { useProfile, useQueryClient, qk } from "@/lib/queries";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { FormSkeleton } from "@/components/skeletons";
@@ -20,12 +21,14 @@ function splitList(v: string): string[] {
 export default function ProfilePage() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const queryClient = useQueryClient();
+  const profQ = useProfile(!!user);
   const [profile, setProfile] = useState<User | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    if (user) getStore().getProfile().then(setProfile);
-  }, [user]);
+    if (profQ.data) setProfile(profQ.data);
+  }, [profQ.data]);
 
   function set<K extends keyof User>(key: K, value: User[K]) {
     setProfile((p) => (p ? { ...p, [key]: value } : p));
@@ -44,12 +47,15 @@ export default function ProfilePage() {
       heightCm: profile.heightCm,
       weightKg: profile.weightKg,
     });
+    queryClient.invalidateQueries({ queryKey: qk.profile });
+    queryClient.invalidateQueries({ queryKey: qk.currentUser });
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   }
 
   async function signOut() {
     await getAuth().signOut();
+    queryClient.clear();
     router.replace("/login");
   }
 

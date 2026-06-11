@@ -1,38 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getAuth } from "@/lib/store";
-import type { User } from "@/lib/store/types";
+import { useCurrentUser } from "@/lib/queries";
 
 /**
- * Client-side auth gate. Fetches the current session from the server after mount
- * and redirects to /login when required.
+ * Client-side auth gate, backed by a cached React Query so the session is fetched
+ * once and reused across navigation (no repeated /api/auth/me). Redirects to
+ * /login when there is no session.
  */
 export function useAuth(redirectIfMissing = true) {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading } = useCurrentUser();
+  const user = data ?? null;
 
   useEffect(() => {
-    let active = true;
-    getAuth()
-      .getCurrentUser()
-      .then((u) => {
-        if (!active) return;
-        setUser(u);
-        setLoading(false);
-        if (!u && redirectIfMissing) router.replace("/login");
-      })
-      .catch(() => {
-        if (!active) return;
-        setLoading(false);
-        if (redirectIfMissing) router.replace("/login");
-      });
-    return () => {
-      active = false;
-    };
-  }, [redirectIfMissing, router]);
+    if (!isLoading && !user && redirectIfMissing) {
+      router.replace("/login");
+    }
+  }, [isLoading, user, redirectIfMissing, router]);
 
-  return { user, loading };
+  return { user, loading: isLoading };
 }

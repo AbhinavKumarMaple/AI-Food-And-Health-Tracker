@@ -1,16 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles, Bell, Info } from "lucide-react";
-import { SayGuideSheet } from "@/components/SayGuideSheet";
-import { RefreshButton } from "@/components/RefreshButton";
-import { TodaySkeleton } from "@/components/skeletons";
-import { getStore } from "@/lib/store";
-import type { DayDetail, UserSettings } from "@/lib/store/types";
 import { todayISODate } from "@/lib/store/util";
 import { useAuth } from "@/lib/useAuth";
+import { useDay, useSettings, useQueryClient, invalidateEntries } from "@/lib/queries";
 import { seedDemoData } from "@/lib/seed";
 import { formatLitres } from "@/lib/format";
 import { Screen } from "@/components/Screen";
@@ -18,6 +14,9 @@ import { GradientPanel } from "@/components/GradientPanel";
 import { SectionHeader } from "@/components/ui";
 import { StatPill } from "@/components/journal";
 import { ActivityRow, type ActivityItem } from "@/components/cards";
+import { SayGuideSheet } from "@/components/SayGuideSheet";
+import { RefreshButton } from "@/components/RefreshButton";
+import { TodaySkeleton, Skeleton, StatPillSkeleton, RowsSkeleton } from "@/components/skeletons";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -28,21 +27,16 @@ function greeting(): string {
 
 export default function TodayPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { user, loading } = useAuth();
-  const [day, setDay] = useState<DayDetail | null>(null);
-  const [settings, setSettings] = useState<UserSettings | null>(null);
-  const [seeding, setSeeding] = useState(false);
+  const today = todayISODate();
+  const dayQ = useDay(today, !!user);
+  const settingsQ = useSettings(!!user);
   const [showGuide, setShowGuide] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
-  const refresh = useCallback(async () => {
-    const store = getStore();
-    setDay(await store.getDay(todayISODate()));
-    setSettings(await store.getSettings());
-  }, []);
-
-  useEffect(() => {
-    if (user) refresh();
-  }, [user, refresh]);
+  const day = dayQ.data;
+  const settings = settingsQ.data;
 
   const activities = useMemo<ActivityItem[]>(() => {
     if (!day) return [];
@@ -60,11 +54,12 @@ export default function TodayPage() {
   async function loadSample() {
     setSeeding(true);
     await seedDemoData();
-    await refresh();
+    invalidateEntries(queryClient);
     setSeeding(false);
   }
 
-  if (loading || !user || !day) {
+  // Only a true first load (session not yet known) shows the full skeleton.
+  if (loading || !user) {
     return (
       <Screen>
         <TodaySkeleton />
@@ -75,50 +70,48 @@ export default function TodayPage() {
   const dateLabel = new Date()
     .toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })
     .toUpperCase();
-  const moodAvg = day.summary?.moodAvg;
-  const waterMl = day.summary?.totalWaterMl ?? 0;
+  const moodAvg = day?.summary?.moodAvg;
+  const waterMl = day?.summary?.totalWaterMl ?? 0;
 
   return (
     <Screen>
-      {/* Header */}
+      {/* Header — static, renders immediately */}
       <GradientPanel variant="amber" rounded="rounded-b-[2rem]" className="px-6 pb-16 pt-5">
         <div className="flex items-center justify-between">
-          <p
-            className="text-[11px] font-bold tracking-[0.12em] text-white/80"
-            style={{ fontFamily: "var(--font-label)" }}
-          >
+          <p className="text-[11px] font-bold tracking-[0.12em] text-white/80" style={{ fontFamily: "var(--font-label)" }}>
             {dateLabel}
           </p>
           <div className="flex items-center gap-2">
-            <RefreshButton light onRefresh={refresh} />
+            <RefreshButton
+              light
+              loading={dayQ.isFetching}
+              onRefresh={() => Promise.all([dayQ.refetch(), settingsQ.refetch()])}
+            />
             <Bell size={18} className="text-white/85" />
           </div>
         </div>
         <p className="mt-3 text-[15px] text-white/85">{greeting()},</p>
-        <h1
-          className="text-[34px] font-extrabold leading-tight text-white"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
+        <h1 className="text-[34px] font-extrabold leading-tight text-white" style={{ fontFamily: "var(--font-display)" }}>
           {user.name?.split(" ")[0] || "there"}.
         </h1>
-        <p className="mt-1 text-[13px] text-white/80">
-          You&apos;ve logged{" "}
-          <span className="font-semibold text-white">{day.meals.length} meals</span> and{" "}
-          <span className="font-semibold text-white">{day.symptoms.length} symptoms</span> so far
-        </p>
+        {day ? (
+          <p className="mt-1 text-[13px] text-white/80">
+            You&apos;ve logged <span className="font-semibold text-white">{day.meals.length} meals</span> and{" "}
+            <span className="font-semibold text-white">{day.symptoms.length} symptoms</span> so far
+          </p>
+        ) : (
+          <Skeleton className="mt-2 h-3 w-52 bg-white/25" />
+        )}
       </GradientPanel>
 
       <div className="flex flex-col gap-5 px-5 pb-8">
-        {/* Tap to talk (overlaps the hero, matching the design) */}
+        {/* Tap to talk — static */}
         <Link
           href="/record"
           className="relative z-10 -mt-10 flex items-center gap-4 rounded-3xl border border-line bg-surface p-4 shadow-[0_8px_24px_rgba(124,52,15,0.18)]"
         >
           <div className="flex flex-1 flex-col gap-1">
-            <span
-              className="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-success"
-              style={{ fontFamily: "var(--font-label)" }}
-            >
+            <span className="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-success" style={{ fontFamily: "var(--font-label)" }}>
               <span className="h-1.5 w-1.5 rounded-full bg-success" /> READY
             </span>
             <span className="text-[19px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>
@@ -138,11 +131,8 @@ export default function TodayPage() {
           <Info size={14} className="text-primary" /> What can I say?
         </button>
 
-        {!settings?.geminiApiKey && (
-          <Link
-            href="/settings"
-            className="flex items-center gap-2 rounded-2xl bg-primary-tint px-4 py-3 text-[12px] font-medium text-primary-press"
-          >
+        {settings && !settings.geminiApiKey && (
+          <Link href="/settings" className="flex items-center gap-2 rounded-2xl bg-primary-tint px-4 py-3 text-[12px] font-medium text-primary-press">
             <Sparkles size={15} /> Add your Gemini API key in Settings to enable voice logging
             <ChevronRight size={15} className="ml-auto" />
           </Link>
@@ -158,17 +148,27 @@ export default function TodayPage() {
               </Link>
             }
           />
-          <div className="grid grid-cols-3 gap-3">
-            <StatPill icon={Utensils} value={String(day.meals.length)} label="Meals" />
-            <StatPill icon={Droplets} tone="warm" value={formatLitres(waterMl)} label="Water" />
-            <StatPill icon={Star} tone="success" value={moodAvg ? moodAvg.toFixed(1) : "—"} label="Mood" />
-          </div>
+          {day ? (
+            <div className="grid grid-cols-3 gap-3">
+              <StatPill icon={Utensils} value={String(day.meals.length)} label="Meals" />
+              <StatPill icon={Droplets} tone="warm" value={formatLitres(waterMl)} label="Water" />
+              <StatPill icon={Star} tone="success" value={moodAvg ? moodAvg.toFixed(1) : "—"} label="Mood" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              <StatPillSkeleton />
+              <StatPillSkeleton />
+              <StatPillSkeleton />
+            </div>
+          )}
         </section>
 
         {/* Recent activity */}
         <section className="flex flex-col gap-3">
           <SectionHeader title="Recent activity" />
-          {activities.length === 0 ? (
+          {!day ? (
+            <RowsSkeleton count={3} />
+          ) : activities.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-surface/60 px-6 py-10 text-center">
               <p className="text-[13px] text-muted">No entries yet today.</p>
               <button
@@ -188,7 +188,7 @@ export default function TodayPage() {
                 <ActivityRow
                   key={`${item.kind}-${item.data.id}`}
                   item={item}
-                  onClick={() => router.push(`/day/${todayISODate()}`)}
+                  onClick={() => router.push(`/day/${today}`)}
                 />
               ))}
             </div>

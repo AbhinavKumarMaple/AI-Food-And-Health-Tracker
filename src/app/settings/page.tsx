@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, KeyRound, Cpu, LogOut, RefreshCw } from "lucide-react";
 import { getAuth, getStore } from "@/lib/store";
 import type { UserSettings, FollowUpAggressiveness, Units } from "@/lib/store/types";
 import type { GeminiModel } from "@/lib/gemini/models";
 import { useAuth } from "@/lib/useAuth";
+import { useSettings, useQueryClient, qk } from "@/lib/queries";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { FormSkeleton } from "@/components/skeletons";
@@ -16,31 +17,30 @@ import { PrimaryButton } from "@/components/ui";
 export default function SettingsPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
-  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const queryClient = useQueryClient();
+  const settingsQ = useSettings(!!user);
+  const settings = settingsQ.data ?? null;
   const [apiKey, setApiKey] = useState("");
   const [models, setModels] = useState<GeminiModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const seeded = useRef(false);
 
   useEffect(() => {
-    if (user) {
-      getStore()
-        .getSettings()
-        .then((s) => {
-          setSettings(s);
-          setApiKey(s.geminiApiKey ?? "");
-        });
+    if (settingsQ.data && !seeded.current) {
+      seeded.current = true;
+      setApiKey(settingsQ.data.geminiApiKey ?? "");
     }
-  }, [user]);
+  }, [settingsQ.data]);
 
   async function saveAndLoadModels() {
     setError(null);
     setLoadingModels(true);
     try {
       const key = apiKey.trim();
-      const next = await getStore().updateSettings({ geminiApiKey: key || null });
-      setSettings(next);
+      await getStore().updateSettings({ geminiApiKey: key || null });
+      queryClient.invalidateQueries({ queryKey: qk.settings });
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
       if (key) {
@@ -61,11 +61,13 @@ export default function SettingsPage() {
   }
 
   async function patch(p: Partial<UserSettings>) {
-    setSettings(await getStore().updateSettings(p));
+    await getStore().updateSettings(p);
+    queryClient.invalidateQueries({ queryKey: qk.settings });
   }
 
   async function signOut() {
     await getAuth().signOut();
+    queryClient.clear();
     router.replace("/login");
   }
 
