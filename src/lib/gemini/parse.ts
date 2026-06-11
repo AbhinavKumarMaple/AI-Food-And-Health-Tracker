@@ -52,6 +52,11 @@ Convert the user's spoken and/or typed health log into STRICTLY structured JSON.
 FIDELITY — the most important rule:
 - Record ONLY what the user actually said. Do NOT invent, assume, or pad. Never add a meal, food,
   drink, symptom, mood, quantity, unit, ingredient, or time that the user did not state.
+- SYMPTOMS & MOODS — strictest of all: create a symptom or mood ONLY when the user EXPLICITLY says
+  they felt it (e.g. "I felt bloated", "had a headache", "feeling tired", "I feel good"). NEVER infer
+  a symptom or mood from a food or drink. Do NOT add "headache" because they had tea/coffee, or
+  "stomach ache"/"bloating" because they had milk/dairy — food→symptom links are computed later by a
+  separate engine, NOT by you. If the user only described food/drink, "symptoms" and "moods" MUST be [].
 - BUT do capture everything the user DID say: a bare mention of a food, drink, symptom or mood IS
   loggable — create the entry using the name the user said, set the unknown fields to null, and ask
   about the gaps in "followUps". Never drop a stated entry just because details are missing.
@@ -166,33 +171,56 @@ export async function parseLogSession(
     throw new Error("Nothing to parse: provide audio or text.");
   }
 
-  const response = await generateWithRetry(ai, {
-    model: input.model,
-    contents: [{ role: "user", parts }],
-    config: {
-      systemInstruction: SYSTEM_INSTRUCTION,
-      responseMimeType: "application/json",
-      temperature: 0,
-    },
-  });
+  // Try up to MAX_ATTEMPTS times. If the model returns invalid JSON or output that
+  // fails schema validation, re-ask once with a corrective hint before giving up —
+  // so a single malformed reply never crashes the capture.
+  const MAX_ATTEMPTS = 2;
+  let lastError = "";
 
-  const text = response.text;
-  if (!text) {
-    throw new Error("Gemini returned an empty response.");
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const attemptParts = [...parts];
+    if (attempt > 1 && lastError) {
+      attemptParts.push({
+        text:
+          `Your previous reply was rejected: ${lastError}. ` +
+          `Respond again with ONLY a valid JSON object matching the required shape exactly — ` +
+          `correct types, no extra or missing fields, no commentary.`,
+      });
+    }
+
+    const response = await generateWithRetry(ai, {
+      model: input.model,
+      contents: [{ role: "user", parts: attemptParts }],
+      config: {
+        systemInstruction: SYSTEM_INSTRUCTION,
+        responseMimeType: "application/json",
+        temperature: 0,
+      },
+    });
+
+    const text = response.text;
+    if (!text) {
+      lastError = "empty response";
+      continue;
+    }
+
+    let json: unknown;
+    try {
+      json = JSON.parse(stripJsonFences(text));
+    } catch {
+      lastError = "the response was not valid JSON";
+      continue;
+    }
+
+    const parsed = parseResultSchema.safeParse(json);
+    if (parsed.success) return parsed.data;
+    lastError = parsed.error.issues
+      .slice(0, 6)
+      .map((i) => `${i.path.join(".")}: ${i.message}`)
+      .join("; ");
   }
 
-  let json: unknown;
-  try {
-    json = JSON.parse(stripJsonFences(text));
-  } catch {
-    throw new Error("Gemini response was not valid JSON.");
-  }
-
-  const parsed = parseResultSchema.safeParse(json);
-  if (!parsed.success) {
-    throw new Error(
-      `Gemini response did not match the expected shape: ${parsed.error.message}`,
-    );
-  }
-  return parsed.data;
+  throw new Error(
+    `Gemini did not return valid structured data after ${MAX_ATTEMPTS} attempts: ${lastError}`,
+  );
 }

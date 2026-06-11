@@ -6,6 +6,5 @@
 - Local:         http://localhost:3000
 - Network:       http://172.16.0.2:3000
 - Environments: .env
-✓ Ready in 715ms
+✓ Ready in 605ms
 
- GET /login 200 in 390ms (next.js: 198ms, application-code: 192ms)
