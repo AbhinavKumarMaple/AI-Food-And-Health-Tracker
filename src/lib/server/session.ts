@@ -42,13 +42,28 @@ export function verifySessionToken(token: string | undefined | null): string | n
   }
 }
 
-export function sessionCookieOptions() {
+/**
+ * Whether the request arrived over HTTPS. A `secure` cookie is dropped by the
+ * browser on plain HTTP, so we must only set it when actually on HTTPS
+ * (otherwise the session is lost on every reload over http://localhost).
+ */
+export function isSecureRequest(req: Request): boolean {
+  const proto = req.headers.get("x-forwarded-proto");
+  if (proto) return proto.split(",")[0].trim() === "https";
+  try {
+    return new URL(req.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function sessionCookieOptions(secure: boolean) {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure,
     sameSite: "lax" as const,
     path: "/",
-    maxAge: MAX_AGE_SECONDS,
+    maxAge: MAX_AGE_SECONDS, // 30 days — long-lived so users stay signed in
   };
 }
 
