@@ -4,6 +4,15 @@ import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-quer
 import { getAuth, getStore } from "@/lib/store";
 import type { ISODate } from "@/lib/store/types";
 
+/** localStorage key the query cache is persisted under. */
+export const PERSIST_KEY = "avni-query-cache";
+
+/** Clear the in-memory + persisted cache (on logout). */
+export function clearAllCache(client: QueryClient) {
+  client.clear();
+  if (typeof window !== "undefined") window.localStorage.removeItem(PERSIST_KEY);
+}
+
 // Query keys (single source of truth)
 export const qk = {
   currentUser: ["currentUser"] as const,
@@ -18,7 +27,7 @@ export function useCurrentUser() {
   return useQuery({
     queryKey: qk.currentUser,
     queryFn: () => getAuth().getCurrentUser(),
-    staleTime: 5 * 60_000, // the session rarely changes; cache it across navigation
+    staleTime: 10 * 60_000, // the session rarely changes; cache it across navigation
   });
 }
 

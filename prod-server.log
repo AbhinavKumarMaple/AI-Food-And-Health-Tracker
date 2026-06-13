@@ -1,0 +1,8 @@
+
+> avni@0.1.0 start
+> next start -p 3002
+
+▲ Next.js 16.2.7
+- Local:         http://localhost:3002
+- Network:       http://172.16.0.2:3002
+✓ Ready in 231ms

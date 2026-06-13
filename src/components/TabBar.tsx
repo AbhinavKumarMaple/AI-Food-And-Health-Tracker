@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Sun, History, BarChart3, User, type LucideIcon } from "lucide-react";
+import { cn } from "@/lib/cn";
 
 type Tab = { href: string; label: string; icon: LucideIcon };
 
@@ -22,37 +23,32 @@ export function TabBar() {
   const pathname = usePathname();
 
   return (
-    <nav className="sticky bottom-0 z-20 border-t border-line bg-surface/95 backdrop-blur">
-      <div className="flex items-center justify-around px-3 pt-2.5 pb-6">
+    // Transparent gutter so the bar reads as floating off the bottom + side edges.
+    <div className="px-4 pt-2 pb-[max(0.9rem,env(safe-area-inset-bottom))]">
+      <nav className="flex items-stretch justify-around rounded-[26px] border border-line/70 bg-surface/92 px-2 py-2 shadow-[0_14px_30px_-6px_rgba(26,26,26,0.22)] backdrop-blur-md">
         {TABS.map((tab) => {
           const active = isActive(pathname, tab.href);
           const Icon = tab.icon;
-          if (active) {
-            return (
-              <Link
-                key={tab.href}
-                href={tab.href}
-                className="flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-white shadow-sm"
-              >
-                <Icon size={18} strokeWidth={2.4} />
-                <span
-                  className="text-[11px] font-bold uppercase tracking-wide"
-                  style={{ fontFamily: "var(--font-label)" }}
-                >
-                  {tab.label}
-                </span>
-              </Link>
-            );
-          }
           return (
             <Link
               key={tab.href}
               href={tab.href}
-              className="flex flex-col items-center gap-1 px-3 py-1 text-faint"
+              aria-current={active ? "page" : undefined}
+              className="flex flex-1 flex-col items-center gap-1 py-1"
             >
-              <Icon size={20} strokeWidth={2.2} />
               <span
-                className="text-[10px] font-semibold uppercase tracking-wide"
+                className={cn(
+                  "flex h-9 w-9 items-center justify-center rounded-2xl transition-colors",
+                  active ? "bg-primary-tint text-primary" : "text-faint",
+                )}
+              >
+                <Icon size={20} strokeWidth={active ? 2.6 : 2.1} />
+              </span>
+              <span
+                className={cn(
+                  "text-[10px] font-semibold uppercase tracking-wide transition-colors",
+                  active ? "text-primary" : "text-faint",
+                )}
                 style={{ fontFamily: "var(--font-label)" }}
               >
                 {tab.label}
@@ -60,7 +56,7 @@ export function TabBar() {
             </Link>
           );
         })}
-      </div>
-    </nav>
+      </nav>
+    </div>
   );
 }

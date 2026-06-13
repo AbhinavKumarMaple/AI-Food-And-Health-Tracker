@@ -7,7 +7,7 @@ import { getAuth, getStore } from "@/lib/store";
 import type { UserSettings, FollowUpAggressiveness, Units } from "@/lib/store/types";
 import type { GeminiModel } from "@/lib/gemini/models";
 import { useAuth } from "@/lib/useAuth";
-import { useSettings, useQueryClient, qk } from "@/lib/queries";
+import { useSettings, useQueryClient, qk, clearAllCache } from "@/lib/queries";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { FormSkeleton } from "@/components/skeletons";
@@ -67,7 +67,7 @@ export default function SettingsPage() {
 
   async function signOut() {
     await getAuth().signOut();
-    queryClient.clear();
+    clearAllCache(queryClient);
     router.replace("/login");
   }
 

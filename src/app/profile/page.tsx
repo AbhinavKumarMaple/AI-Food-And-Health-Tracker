@@ -7,7 +7,7 @@ import { Settings, LogOut, Check, ChevronRight, HeartPulse } from "lucide-react"
 import { getAuth, getStore } from "@/lib/store";
 import type { User } from "@/lib/store/types";
 import { useAuth } from "@/lib/useAuth";
-import { useProfile, useQueryClient, qk } from "@/lib/queries";
+import { useProfile, useQueryClient, qk, clearAllCache } from "@/lib/queries";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { FormSkeleton } from "@/components/skeletons";
@@ -55,7 +55,7 @@ export default function ProfilePage() {
 
   async function signOut() {
     await getAuth().signOut();
-    queryClient.clear();
+    clearAllCache(queryClient);
     router.replace("/login");
   }
 
