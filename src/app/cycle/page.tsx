@@ -31,6 +31,7 @@ import {
   lastDeviation,
   type Cycle,
 } from "@/lib/cycle/engine";
+import type { CycleLogPatch } from "@/lib/store/dataStore";
 import { analyzeSymptomCyclePatterns } from "@/lib/cycle/confounder";
 import { PHASE_META, predictionLine, confidenceNote, fmtDate } from "@/lib/cycle/present";
 import { Screen } from "@/components/Screen";
@@ -64,6 +65,34 @@ const SYMPTOM_OPTIONS: { type: string; label: string }[] = [
   { type: "cravings", label: "Cravings" },
 ];
 
+/** Merge a patch into the cached cycle-day row (or create it) for optimistic UI. */
+function applyCyclePatch(logs: CycleLog[], date: string, patch: CycleLogPatch): CycleLog[] {
+  const now = nowIso();
+  const idx = logs.findIndex((l) => l.date === date);
+  if (idx === -1) {
+    const created: CycleLog = {
+      id: `temp-${date}`,
+      userId: "",
+      date,
+      isPeriodStart: false,
+      flow: null,
+      clots: false,
+      flooding: false,
+      bbtCelsius: null,
+      cervicalMucus: null,
+      ovulationTest: null,
+      intercourse: null,
+      notes: null,
+      source: "manual",
+      createdAt: now,
+      updatedAt: now,
+      ...patch,
+    };
+    return [...logs, created].sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+  return logs.map((l, i) => (i === idx ? { ...l, ...patch, updatedAt: now } : l));
+}
+
 export default function CyclePage() {
   const { user, loading } = useAuth();
   const queryClient = useQueryClient();
@@ -75,7 +104,6 @@ export default function CyclePage() {
   const logs = logsQ.data;
   const today = todayISODate();
   const [advanced, setAdvanced] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [addedSymptom, setAddedSymptom] = useState<string | null>(null);
 
   const analysis = useMemo(() => {
@@ -108,18 +136,25 @@ export default function CyclePage() {
     return [...res.patterns.values()].filter((p) => p.cycleLinked);
   }, [corrQ.data, today, settings?.cycleAvgLengthDays]);
 
-  async function patchToday(patch: Partial<CycleLog>) {
-    setBusy(true);
+  async function patchToday(patch: CycleLogPatch) {
+    // Optimistic: write to the cache immediately so the UI (flow chips, phase,
+    // prediction, Today card) updates with no wait, then sync to the API.
+    await queryClient.cancelQueries({ queryKey: qk.cycleLogs });
+    const prev = queryClient.getQueryData<CycleLog[]>(qk.cycleLogs);
+    queryClient.setQueryData<CycleLog[]>(qk.cycleLogs, (old) =>
+      applyCyclePatch(old ?? [], today, patch),
+    );
     try {
       await getStore().upsertCycleLog(today, patch);
-      await queryClient.invalidateQueries({ queryKey: qk.cycleLogs });
-    } finally {
-      setBusy(false);
+      queryClient.invalidateQueries({ queryKey: qk.cycleLogs });
+    } catch {
+      // Roll back to the pre-mutation snapshot on failure.
+      queryClient.setQueryData(qk.cycleLogs, prev);
     }
   }
 
-  async function startPeriod() {
-    await patchToday({ isPeriodStart: true, flow: todayLog?.flow ?? "medium" });
+  function startPeriod() {
+    patchToday({ isPeriodStart: true, flow: todayLog?.flow ?? "medium" });
   }
 
   async function logSymptom(type: string, label: string) {
@@ -226,7 +261,7 @@ export default function CyclePage() {
           </h2>
           <Card>
             {!todayLog?.isPeriodStart ? (
-              <PrimaryButton icon={Droplet} onClick={startPeriod} disabled={busy} className="mb-3">
+              <PrimaryButton icon={Droplet} onClick={startPeriod} className="mb-3">
                 My period started today
               </PrimaryButton>
             ) : (
@@ -244,7 +279,6 @@ export default function CyclePage() {
                 return (
                   <button
                     key={f.value}
-                    disabled={busy}
                     onClick={() => patchToday({ flow: active ? "none" : f.value })}
                     className={
                       "rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold transition " +
@@ -259,8 +293,8 @@ export default function CyclePage() {
 
             {todayLog?.flow && todayLog.flow !== "none" && (
               <div className="mt-3 flex gap-2">
-                <ToggleChip label="Clots" active={!!todayLog?.clots} disabled={busy} onClick={() => patchToday({ clots: !todayLog?.clots })} />
-                <ToggleChip label="Flooding" active={!!todayLog?.flooding} disabled={busy} onClick={() => patchToday({ flooding: !todayLog?.flooding })} />
+                <ToggleChip label="Clots" active={!!todayLog?.clots} onClick={() => patchToday({ clots: !todayLog?.clots })} />
+                <ToggleChip label="Flooding" active={!!todayLog?.flooding} onClick={() => patchToday({ flooding: !todayLog?.flooding })} />
               </div>
             )}
           </Card>
