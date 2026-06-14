@@ -8,6 +8,7 @@ import type {
   CycleLogPatch,
   DataStore,
   DateRange,
+  DayContextPatch,
   NewFollowUp,
   NewHydration,
   NewLogSession,
@@ -18,6 +19,7 @@ import type {
 import type {
   CorrelationDataset,
   CycleLog,
+  DayContext,
   DayDetail,
   DaySummary,
   FollowUpQuestion,
@@ -158,6 +160,41 @@ function cycleLogToDomain(r: Row): CycleLog {
     intercourse: (r.intercourse as boolean) ?? null,
     notes: (r.notes as string) ?? null,
     source: r.source as CycleLog["source"],
+    createdAt: (r.createdAt as Date).toISOString(),
+    updatedAt: (r.updatedAt as Date).toISOString(),
+  };
+}
+
+function dayContextToDomain(r: Row): DayContext {
+  return {
+    id: r.id as string,
+    userId: r.userId as string,
+    date: r.date as string,
+    city: (r.city as string) ?? null,
+    region: (r.region as string) ?? null,
+    country: (r.country as string) ?? null,
+    latitude: (r.latitude as number) ?? null,
+    longitude: (r.longitude as number) ?? null,
+    locationSource: (r.locationSource as DayContext["locationSource"]) ?? null,
+    tempMinC: (r.tempMinC as number) ?? null,
+    tempMaxC: (r.tempMaxC as number) ?? null,
+    tempMeanC: (r.tempMeanC as number) ?? null,
+    apparentMaxC: (r.apparentMaxC as number) ?? null,
+    humidityMean: (r.humidityMean as number) ?? null,
+    pressureMeanHpa: (r.pressureMeanHpa as number) ?? null,
+    pressureRangeHpa: (r.pressureRangeHpa as number) ?? null,
+    precipitationMm: (r.precipitationMm as number) ?? null,
+    windMaxKph: (r.windMaxKph as number) ?? null,
+    uvIndexMax: (r.uvIndexMax as number) ?? null,
+    weatherCode: (r.weatherCode as number) ?? null,
+    daylightMinutes: (r.daylightMinutes as number) ?? null,
+    pm25Mean: (r.pm25Mean as number) ?? null,
+    pm10Mean: (r.pm10Mean as number) ?? null,
+    aqiUsMax: (r.aqiUsMax as number) ?? null,
+    moonPhase: (r.moonPhase as DayContext["moonPhase"]) ?? null,
+    moonIllumination: (r.moonIllumination as number) ?? null,
+    season: (r.season as DayContext["season"]) ?? null,
+    source: (r.source as DayContext["source"]) ?? "auto",
     createdAt: (r.createdAt as Date).toISOString(),
     updatedAt: (r.updatedAt as Date).toISOString(),
   };
@@ -322,6 +359,7 @@ export class PrismaDataStore implements DataStore {
       followUpAggressiveness: row.followUpAggressiveness,
       cycleTrackingEnabled: row.cycleTrackingEnabled,
       cycleAvgLengthDays: row.cycleAvgLengthDays,
+      envTrackingEnabled: row.envTrackingEnabled,
       updatedAt: row.updatedAt.toISOString(),
     };
   }
@@ -348,6 +386,8 @@ export class PrismaDataStore implements DataStore {
       data.cycleTrackingEnabled = patch.cycleTrackingEnabled;
     if (patch.cycleAvgLengthDays !== undefined)
       data.cycleAvgLengthDays = patch.cycleAvgLengthDays;
+    if (patch.envTrackingEnabled !== undefined)
+      data.envTrackingEnabled = patch.envTrackingEnabled;
 
     await prisma.userSettings.upsert({
       where: { userId: this.userId },
@@ -676,6 +716,45 @@ export class PrismaDataStore implements DataStore {
     await prisma.cycleLog.deleteMany({ where: { userId: this.userId, date } });
   }
 
+  // ---- day context (environment) --------------------------------------------
+
+  async getDayContext(date: ISODate): Promise<DayContext | null> {
+    const row = await prisma.dayContext.findUnique({
+      where: { userId_date: { userId: this.userId, date } },
+    });
+    return row ? dayContextToDomain(row as Row) : null;
+  }
+
+  async listDayContexts(range?: { start: ISODate; end: ISODate }): Promise<DayContext[]> {
+    const rows = await prisma.dayContext.findMany({
+      where: {
+        userId: this.userId,
+        ...(range ? { date: { gte: range.start, lte: range.end } } : {}),
+      },
+      orderBy: { date: "asc" },
+    });
+    return rows.map((r) => dayContextToDomain(r as Row));
+  }
+
+  async upsertDayContext(date: ISODate, patch: DayContextPatch): Promise<DayContext> {
+    const data: Record<string, unknown> = {};
+    const keys: (keyof DayContextPatch)[] = [
+      "city", "region", "country", "latitude", "longitude", "locationSource",
+      "tempMinC", "tempMaxC", "tempMeanC", "apparentMaxC", "humidityMean",
+      "pressureMeanHpa", "pressureRangeHpa", "precipitationMm", "windMaxKph",
+      "uvIndexMax", "weatherCode", "daylightMinutes", "pm25Mean", "pm10Mean",
+      "aqiUsMax", "moonPhase", "moonIllumination", "season", "source",
+    ];
+    for (const k of keys) if (patch[k] !== undefined) data[k] = patch[k];
+
+    const row = await prisma.dayContext.upsert({
+      where: { userId_date: { userId: this.userId, date } },
+      create: { userId: this.userId, date, ...data } as Prisma.DayContextUncheckedCreateInput,
+      update: data as Prisma.DayContextUncheckedUpdateInput,
+    });
+    return dayContextToDomain(row as Row);
+  }
+
   // ---- queries --------------------------------------------------------------
 
   private rangeWhere(range?: DateRange) {
@@ -925,6 +1004,7 @@ export class PrismaDataStore implements DataStore {
     await prisma.mood.deleteMany({ where });
     await prisma.hydrationLog.deleteMany({ where });
     await prisma.cycleLog.deleteMany({ where });
+    await prisma.dayContext.deleteMany({ where });
     await prisma.daySummary.deleteMany({ where });
     await prisma.logSession.deleteMany({ where });
     await prisma.followUpQuestion.deleteMany({ where });

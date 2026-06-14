@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Settings, LogOut, Check, ChevronRight, HeartPulse, Droplet } from "lucide-react";
+import { Settings, LogOut, Check, ChevronRight, HeartPulse, Droplet, CloudSun } from "lucide-react";
 import { getAuth, getStore } from "@/lib/store";
 import type { User } from "@/lib/store/types";
 import { useAuth } from "@/lib/useAuth";
@@ -30,6 +30,12 @@ export default function ProfilePage() {
   const cycleEnabled = settingsQ.data?.cycleTrackingEnabled ?? false;
   async function toggleCycle(next: boolean) {
     await getStore().updateSettings({ cycleTrackingEnabled: next });
+    queryClient.invalidateQueries({ queryKey: qk.settings });
+  }
+
+  const envEnabled = settingsQ.data?.envTrackingEnabled ?? false;
+  async function toggleEnv(next: boolean) {
+    await getStore().updateSettings({ envTrackingEnabled: next });
     queryClient.invalidateQueries({ queryKey: qk.settings });
   }
 
@@ -151,6 +157,22 @@ export default function ProfilePage() {
                 <ChevronRight size={15} className="ml-auto" />
               </Link>
             )}
+          </Card>
+        </section>
+
+        {/* Environment auto-logging (free, coarse) */}
+        <section className="flex flex-col gap-2.5">
+          <h2 className="flex items-center gap-2 px-1 text-[13px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+            <CloudSun size={15} className="text-primary" /> Environment
+          </h2>
+          <Card>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col">
+                <span className="text-[14px] font-semibold text-ink">Auto-log weather &amp; surroundings</span>
+                <span className="text-[12px] text-muted">Free, coarse location only — weather, air quality, daylight, moon &amp; season for each day.</span>
+              </div>
+              <Toggle on={envEnabled} onChange={toggleEnv} />
+            </div>
           </Card>
         </section>
 

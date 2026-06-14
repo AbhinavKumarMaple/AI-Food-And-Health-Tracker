@@ -1,5 +1,6 @@
 import type {
   CycleLog,
+  DayContext,
   DayDetail,
   DaySummary,
   FollowUpQuestion,
@@ -36,6 +37,11 @@ export type NewHydration = Omit<HydrationLog, "id" | "userId" | "createdAt">;
 /** Fields a caller may set on a cycle day; the store owns id/userId/date/timestamps. */
 export type CycleLogPatch = Partial<
   Omit<CycleLog, "id" | "userId" | "date" | "createdAt" | "updatedAt">
+>;
+
+/** Fields a caller may set on a day's env snapshot. */
+export type DayContextPatch = Partial<
+  Omit<DayContext, "id" | "userId" | "date" | "createdAt" | "updatedAt">
 >;
 
 export type NewFollowUp = Omit<
@@ -105,6 +111,11 @@ export interface DataStore {
   listCycleLogs(range?: { start: ISODate; end: ISODate }): Promise<CycleLog[]>;
   upsertCycleLog(date: ISODate, patch: CycleLogPatch): Promise<CycleLog>;
   deleteCycleLog(date: ISODate): Promise<void>;
+
+  // per-day environmental context (auto-captured)
+  getDayContext(date: ISODate): Promise<DayContext | null>;
+  listDayContexts(range?: { start: ISODate; end: ISODate }): Promise<DayContext[]>;
+  upsertDayContext(date: ISODate, patch: DayContextPatch): Promise<DayContext>;
 
   // queries by time window
   listMeals(range?: DateRange): Promise<Meal[]>;

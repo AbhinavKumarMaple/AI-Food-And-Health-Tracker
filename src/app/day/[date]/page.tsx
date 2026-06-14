@@ -1,16 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, MoreHorizontal, Utensils, Activity, Droplets, CheckCircle2, Trash2 } from "lucide-react";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
-import { useDay, useQueryClient, invalidateEntries } from "@/lib/queries";
+import { useDay, useSettings, useDayContext, useQueryClient, invalidateEntries, ensureDayContext } from "@/lib/queries";
 import { formatLitres, formatTime, moodLabel } from "@/lib/format";
 import { Screen } from "@/components/Screen";
 import { RefreshButton } from "@/components/RefreshButton";
 import { Card, ActivityRow, type ActivityItem } from "@/components/cards";
 import { Chip, Stars } from "@/components/ui";
+import { EnvCard } from "@/components/EnvCard";
 import { DaySkeleton, Skeleton, RowsSkeleton } from "@/components/skeletons";
 
 function dayTitle(rating: number | null | undefined): string {
@@ -28,6 +29,19 @@ export default function DayDetailPage() {
   const { user, loading } = useAuth();
   const dayQ = useDay(date, !!user);
   const day = dayQ.data;
+  const settingsQ = useSettings(!!user);
+  const envEnabled = settingsQ.data?.envTrackingEnabled ?? false;
+  const ctxQ = useDayContext(date, !!user && envEnabled);
+
+  // Backfill this day's environmental context once if it's missing.
+  const backfilled = useRef(false);
+  useEffect(() => {
+    if (!envEnabled || backfilled.current) return;
+    if (ctxQ.isFetched && ctxQ.data == null) {
+      backfilled.current = true;
+      ensureDayContext(queryClient, date).then(() => ctxQ.refetch());
+    }
+  }, [envEnabled, ctxQ.isFetched, ctxQ.data, queryClient, date, ctxQ]);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirm, setConfirm] = useState<"day" | "all" | null>(null);
@@ -182,6 +196,14 @@ export default function DayDetailPage() {
           </Card>
         ) : (
           <Skeleton className="h-28 rounded-2xl" />
+        )}
+
+        {/* Environment (auto-captured, free) */}
+        {envEnabled && ctxQ.data && (
+          <section className="flex flex-col gap-2">
+            <h2 className="px-1 text-[16px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>Environment</h2>
+            <EnvCard ctx={ctxQ.data} />
+          </section>
         )}
 
         {/* Timeline */}

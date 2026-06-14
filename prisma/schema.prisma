@@ -130,6 +130,10 @@ model UserSettings {
   // periods are logged to learn a personal one (population default ~28).
   cycleAvgLengthDays Int @default(28)
 
+  // Auto-capture free environmental context (coarse location, weather, air
+  // quality, daylight, moon/season) per day. Coarse + opt-out-able.
+  envTrackingEnabled Boolean @default(true)
+
   updatedAt DateTime @updatedAt
 }
 
@@ -321,6 +325,57 @@ model CycleLog {
   notes  String?     @db.Text
   source EntrySource @default(manual)
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+// One auto-captured environmental snapshot per user per local calendar day,
+// shared by every meal/symptom/mood/cycle entry that day. Sourced for free:
+// coarse location from request IP geo, weather + air quality from Open-Meteo
+// (no API key), and moon phase + season computed locally. Used as free
+// covariates alongside food and cycle phase.
+model DayContext {
+  id     String @id @default(cuid())
+  userId String
+
+  date String // YYYY-MM-DD (user's local calendar day)
+
+  // coarse location
+  city           String?
+  region         String?
+  country        String?
+  latitude       Float?
+  longitude      Float?
+  locationSource String? // ip | profile | precise | manual
+
+  // weather (metric)
+  tempMinC         Float?
+  tempMaxC         Float?
+  tempMeanC        Float?
+  apparentMaxC     Float?
+  humidityMean     Float?
+  pressureMeanHpa  Float?
+  pressureRangeHpa Float? // intra-day swing — barometric instability proxy
+  precipitationMm  Float?
+  windMaxKph       Float?
+  uvIndexMax       Float?
+  weatherCode      Int?
+  daylightMinutes  Int?
+
+  // air quality
+  pm25Mean Float?
+  pm10Mean Float?
+  aqiUsMax Int?
+
+  // computed locally (no API)
+  moonPhase        String? // new | waxing_crescent | first_quarter | ...
+  moonIllumination Float? // 0..1
+  season           String? // winter | spring | summer | autumn
+
+  source    String   @default("auto") // auto | manual
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getStore } from "@/lib/store";
-import { qk, useCurrentUser } from "@/lib/queries";
+import { qk, useCurrentUser, ensureDayContext } from "@/lib/queries";
 import { todayISODate } from "@/lib/store/util";
 
 /**
@@ -25,6 +25,9 @@ export function AppWarmup() {
     queryClient.prefetchQuery({ queryKey: qk.settings, queryFn: () => store.getSettings() });
     queryClient.prefetchQuery({ queryKey: qk.profile, queryFn: () => store.getProfile() });
     queryClient.prefetchQuery({ queryKey: qk.cycleLogs, queryFn: () => store.listCycleLogs() });
+    queryClient.prefetchQuery({ queryKey: qk.dayContext(today), queryFn: () => store.getDayContext(today) });
+    // Auto-capture today's free environmental context (no-ops if disabled).
+    void ensureDayContext(queryClient);
   }, [user, queryClient]);
 
   return null;

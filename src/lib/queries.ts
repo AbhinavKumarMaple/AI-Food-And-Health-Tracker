@@ -22,6 +22,7 @@ export const qk = {
   daySummaries: ["daySummaries"] as const,
   correlation: ["correlationDataset"] as const,
   cycleLogs: ["cycleLogs"] as const,
+  dayContext: (date: ISODate) => ["dayContext", date] as const,
 };
 
 export function useCurrentUser() {
@@ -66,6 +67,34 @@ export function useCycleLogs(enabled = true) {
     queryFn: () => getStore().listCycleLogs(),
     enabled,
   });
+}
+
+export function useDayContext(date: ISODate, enabled = true) {
+  return useQuery({
+    queryKey: qk.dayContext(date),
+    queryFn: () => getStore().getDayContext(date),
+    enabled,
+  });
+}
+
+/**
+ * Ask the server to auto-capture (or backfill) the environmental context for a
+ * day — coarse location + weather + air quality + moon/season — then seed the
+ * cache. No-ops silently if env tracking is off or the network fails.
+ */
+export async function ensureDayContext(client: QueryClient, date?: ISODate): Promise<void> {
+  try {
+    const res = await fetch("/api/context", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(date ? { date } : {}),
+    });
+    if (!res.ok) return;
+    const { context } = (await res.json()) as { context: import("@/lib/store/types").DayContext | null };
+    if (context) client.setQueryData(qk.dayContext(context.date), context);
+  } catch {
+    // best-effort; env context is non-critical
+  }
 }
 
 /** Invalidate everything that depends on logged entries (after add/edit/delete). */

@@ -66,6 +66,57 @@ export interface UserSettings {
   cycleTrackingEnabled: boolean;
   /** User's expected cycle length — a gentle prior until enough periods are logged. */
   cycleAvgLengthDays: number;
+  /** Auto-capture free per-day environmental context (weather, AQI, daylight, moon). */
+  envTrackingEnabled: boolean;
+  updatedAt: ISODateTime;
+}
+
+export type MoonPhase =
+  | "new"
+  | "waxing_crescent"
+  | "first_quarter"
+  | "waxing_gibbous"
+  | "full"
+  | "waning_gibbous"
+  | "last_quarter"
+  | "waning_crescent";
+export type Season = "winter" | "spring" | "summer" | "autumn";
+export type LocationSource = "ip" | "profile" | "precise" | "manual";
+
+/**
+ * One auto-captured environmental snapshot for a local calendar day, shared by
+ * all of that day's entries. Every field is nullable — partial capture is fine.
+ */
+export interface DayContext {
+  id: ID;
+  userId: ID;
+  date: ISODate;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  locationSource?: LocationSource | null;
+  tempMinC?: number | null;
+  tempMaxC?: number | null;
+  tempMeanC?: number | null;
+  apparentMaxC?: number | null;
+  humidityMean?: number | null;
+  pressureMeanHpa?: number | null;
+  pressureRangeHpa?: number | null;
+  precipitationMm?: number | null;
+  windMaxKph?: number | null;
+  uvIndexMax?: number | null;
+  weatherCode?: number | null;
+  daylightMinutes?: number | null;
+  pm25Mean?: number | null;
+  pm10Mean?: number | null;
+  aqiUsMax?: number | null;
+  moonPhase?: MoonPhase | null;
+  moonIllumination?: number | null;
+  season?: Season | null;
+  source: EntrySource | "auto";
+  createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
 

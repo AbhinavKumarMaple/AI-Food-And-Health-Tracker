@@ -10,6 +10,7 @@ import type {
   CycleLogPatch,
   DataStore,
   DateRange,
+  DayContextPatch,
   NewFollowUp,
   NewHydration,
   NewLogSession,
@@ -20,6 +21,7 @@ import type {
 import type {
   CorrelationDataset,
   CycleLog,
+  DayContext,
   DayDetail,
   DaySummary,
   FollowUpQuestion,
@@ -88,6 +90,7 @@ export class LocalDataStore implements DataStore {
       followUpAggressiveness: "medium",
       cycleTrackingEnabled: false,
       cycleAvgLengthDays: 28,
+      envTrackingEnabled: true,
       updatedAt: nowIso(),
     };
     this.write("settings", def);
@@ -320,6 +323,39 @@ export class LocalDataStore implements DataStore {
     this.write("cycleLogs", this.read<CycleLog[]>("cycleLogs", []).filter((c) => c.date !== date));
   }
 
+  // ---- day context -----------------------------------------------------------
+
+  async getDayContext(date: ISODate): Promise<DayContext | null> {
+    return this.read<DayContext[]>("dayContexts", []).find((c) => c.date === date) ?? null;
+  }
+  async listDayContexts(range?: { start: ISODate; end: ISODate }): Promise<DayContext[]> {
+    return this.read<DayContext[]>("dayContexts", [])
+      .filter((c) => !range || (c.date >= range.start && c.date <= range.end))
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+  async upsertDayContext(date: ISODate, patch: DayContextPatch): Promise<DayContext> {
+    const list = this.read<DayContext[]>("dayContexts", []);
+    const idx = list.findIndex((c) => c.date === date);
+    const now = nowIso();
+    if (idx === -1) {
+      const created = {
+        id: newId(),
+        userId: this.uid(),
+        date,
+        source: "auto" as const,
+        createdAt: now,
+        updatedAt: now,
+        ...patch,
+      } as DayContext;
+      list.push(created);
+      this.write("dayContexts", list);
+      return created;
+    }
+    list[idx] = { ...list[idx], ...patch, id: list[idx].id, date, userId: this.uid(), updatedAt: now };
+    this.write("dayContexts", list);
+    return list[idx];
+  }
+
   // ---- queries ---------------------------------------------------------------
 
   async listMeals(range?: DateRange): Promise<Meal[]> {
@@ -539,6 +575,7 @@ export class LocalDataStore implements DataStore {
       "moods",
       "hydration",
       "cycleLogs",
+      "dayContexts",
       "daySummaries",
       "sessions",
       "followUps",

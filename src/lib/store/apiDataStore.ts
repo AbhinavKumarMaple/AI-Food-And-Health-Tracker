@@ -2,6 +2,7 @@ import type {
   CycleLogPatch,
   DataStore,
   DateRange,
+  DayContextPatch,
   NewFollowUp,
   NewHydration,
   NewLogSession,
@@ -12,6 +13,7 @@ import type {
 import type {
   CorrelationDataset,
   CycleLog,
+  DayContext,
   DayDetail,
   DaySummary,
   FollowUpQuestion,
@@ -114,6 +116,16 @@ export class ApiDataStore implements DataStore {
   }
   deleteCycleLog(date: ISODate) {
     return rpc<void>("deleteCycleLog", [date]);
+  }
+
+  getDayContext(date: ISODate) {
+    return rpc<DayContext | null>("getDayContext", [date]);
+  }
+  listDayContexts(range?: { start: ISODate; end: ISODate }) {
+    return rpc<DayContext[]>("listDayContexts", [range]);
+  }
+  upsertDayContext(date: ISODate, patch: DayContextPatch) {
+    return rpc<DayContext>("upsertDayContext", [date, patch]);
   }
 
   listMeals(range?: DateRange) {
