@@ -5,9 +5,8 @@ import { useRouter } from "next/navigation";
 import { Check, KeyRound, Cpu, LogOut, RefreshCw } from "lucide-react";
 import { getAuth, getStore } from "@/lib/store";
 import type { UserSettings, FollowUpAggressiveness, Units } from "@/lib/store/types";
-import type { GeminiModel } from "@/lib/gemini/models";
 import { useAuth } from "@/lib/useAuth";
-import { useSettings, useQueryClient, qk, clearAllCache } from "@/lib/queries";
+import { useSettings, useGeminiModels, useQueryClient, qk, clearAllCache } from "@/lib/queries";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { FormSkeleton } from "@/components/skeletons";
@@ -21,11 +20,16 @@ export default function SettingsPage() {
   const settingsQ = useSettings(!!user);
   const settings = settingsQ.data ?? null;
   const [apiKey, setApiKey] = useState("");
-  const [models, setModels] = useState<GeminiModel[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const seeded = useRef(false);
+
+  // Auto-load (and cache) the live model list for the SAVED key — so the picker
+  // is populated whenever Settings opens, not only after pressing the button.
+  const modelsQ = useGeminiModels(settings?.geminiApiKey);
+  const models = modelsQ.data ?? [];
+  const modelsError = modelsQ.error instanceof Error ? modelsQ.error.message : null;
 
   useEffect(() => {
     if (settingsQ.data && !seeded.current) {
@@ -34,29 +38,21 @@ export default function SettingsPage() {
     }
   }, [settingsQ.data]);
 
-  async function saveAndLoadModels() {
+  async function saveKey() {
     setError(null);
-    setLoadingModels(true);
+    setSaving(true);
     try {
       const key = apiKey.trim();
       await getStore().updateSettings({ geminiApiKey: key || null });
       queryClient.invalidateQueries({ queryKey: qk.settings });
+      // Refetch the catalogue for the new key (the query re-keys off the saved key).
+      queryClient.invalidateQueries({ queryKey: ["geminiModels"] });
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
-      if (key) {
-        const res = await fetch("/api/gemini/models", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ apiKey: key }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Failed to load models");
-        setModels(data.models as GeminiModel[]);
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
-      setLoadingModels(false);
+      setSaving(false);
     }
   }
 
@@ -100,14 +96,14 @@ export default function SettingsPage() {
               Stored locally on this device. Used to transcribe audio and structure your logs.
             </p>
             <PrimaryButton
-              icon={loadingModels ? RefreshCw : Check}
-              onClick={saveAndLoadModels}
-              disabled={loadingModels}
+              icon={saving || modelsQ.isFetching ? RefreshCw : Check}
+              onClick={saveKey}
+              disabled={saving}
               className="mt-3"
             >
-              {loadingModels ? "Loading models…" : saved ? "Saved" : "Save & load models"}
+              {saving ? "Saving…" : modelsQ.isFetching ? "Loading models…" : saved ? "Saved" : "Save & load models"}
             </PrimaryButton>
-            {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
+            {(error || modelsError) && <p className="mt-2 text-[12px] text-danger">{error || modelsError}</p>}
           </Card>
         </section>
 
@@ -122,7 +118,10 @@ export default function SettingsPage() {
               onChange={(e) => patch({ selectedModel: e.target.value })}
               className="h-11 w-full rounded-xl border border-line bg-canvas px-3 text-[14px] text-ink outline-none focus:border-primary"
             >
-              {models.length === 0 && <option value={settings.selectedModel}>{settings.selectedModel}</option>}
+              {/* Always keep the current selection as a valid option. */}
+              {!models.some((m) => m.baseModelId === settings.selectedModel) && (
+                <option value={settings.selectedModel}>{settings.selectedModel}</option>
+              )}
               {models.map((m) => (
                 <option key={m.name} value={m.baseModelId}>
                   {m.displayName}
@@ -132,7 +131,11 @@ export default function SettingsPage() {
             <p className="mt-2 text-[11px] text-faint">
               {models.length > 0
                 ? `${models.length} models available with your key.`
-                : "Save your key above to load the live model list from Google."}
+                : modelsQ.isFetching
+                  ? "Loading the live model list from Google…"
+                  : settings.geminiApiKey
+                    ? "Couldn't load the model list — check your key."
+                    : "Save your Gemini API key above to load the live model list."}
             </p>
           </Card>
         </section>

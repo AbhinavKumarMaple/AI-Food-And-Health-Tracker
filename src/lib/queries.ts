@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { getAuth, getStore } from "@/lib/store";
 import type { ISODate } from "@/lib/store/types";
+import type { GeminiModel } from "@/lib/gemini/models";
 
 /** localStorage key the query cache is persisted under. */
 export const PERSIST_KEY = "avni-query-cache";
@@ -66,6 +67,31 @@ export function useCycleLogs(enabled = true) {
     queryKey: qk.cycleLogs,
     queryFn: () => getStore().listCycleLogs(),
     enabled,
+  });
+}
+
+/**
+ * Live list of Gemini models the user's key can use, cached so the Settings
+ * picker is populated on open (not only after clicking a button). Keyed by a
+ * short non-sensitive suffix so changing the key refetches without persisting
+ * the full key into the localStorage query cache.
+ */
+export function useGeminiModels(apiKey: string | null | undefined) {
+  return useQuery({
+    queryKey: ["geminiModels", apiKey ? `${apiKey.length}:${apiKey.slice(-4)}` : "none"],
+    enabled: !!apiKey,
+    staleTime: 60 * 60_000, // the catalogue rarely changes
+    retry: 0,
+    queryFn: async () => {
+      const res = await fetch("/api/gemini/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to load models");
+      return data.models as GeminiModel[];
+    },
   });
 }
 
