@@ -24,6 +24,7 @@ export function AppWarmup() {
     queryClient.prefetchQuery({ queryKey: qk.correlation, queryFn: () => store.getCorrelationDataset() });
     queryClient.prefetchQuery({ queryKey: qk.settings, queryFn: () => store.getSettings() });
     queryClient.prefetchQuery({ queryKey: qk.profile, queryFn: () => store.getProfile() });
+    queryClient.prefetchQuery({ queryKey: qk.cycleLogs, queryFn: () => store.listCycleLogs() });
   }, [user, queryClient]);
 
   return null;

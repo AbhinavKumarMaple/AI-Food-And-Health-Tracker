@@ -62,6 +62,44 @@ export interface UserSettings {
   selectedModel: string;
   units: Units;
   followUpAggressiveness: FollowUpAggressiveness;
+  /** Opt-in switch for the (entirely optional) menstrual cycle module. */
+  cycleTrackingEnabled: boolean;
+  /** User's expected cycle length — a gentle prior until enough periods are logged. */
+  cycleAvgLengthDays: number;
+  updatedAt: ISODateTime;
+}
+
+/** Bleeding intensity for a day (ordinal). `none` = logged but not bleeding. */
+export type FlowLevel = "none" | "spotting" | "light" | "medium" | "heavy" | "flooding";
+export type CervicalMucus = "dry" | "sticky" | "creamy" | "watery" | "eggwhite";
+export type OvulationTest = "negative" | "positive";
+/** Menstrual cycle phase. `unknown` when it can't be estimated with any confidence. */
+export type CyclePhase =
+  | "menstrual"
+  | "follicular"
+  | "ovulatory"
+  | "luteal"
+  | "unknown";
+
+/**
+ * One calendar day of menstruation-specific logging. Cycle-linked symptoms and
+ * mood are NOT stored here — they reuse Symptom/Mood and get a derived phase tag.
+ */
+export interface CycleLog {
+  id: ID;
+  userId: ID;
+  date: ISODate; // user's local calendar day; unique per user
+  isPeriodStart: boolean;
+  flow?: FlowLevel | null;
+  clots: boolean;
+  flooding: boolean;
+  bbtCelsius?: number | null;
+  cervicalMucus?: CervicalMucus | null;
+  ovulationTest?: OvulationTest | null;
+  intercourse?: boolean | null;
+  notes?: string | null;
+  source: EntrySource;
+  createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
 
@@ -272,4 +310,10 @@ export interface CorrelationDataset {
   symptoms: Symptom[];
   moods: Mood[];
   hydration: HydrationLog[];
+  /**
+   * Period/flow day-logs, when the user tracks their cycle. Lets the engine tag
+   * events with a cycle phase and avoid blaming foods for cycle-driven symptoms.
+   * Optional so non-tracking users (and existing call sites/tests) are unaffected.
+   */
+  cycleLogs?: CycleLog[];
 }

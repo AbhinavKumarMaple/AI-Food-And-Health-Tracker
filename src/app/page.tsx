@@ -3,10 +3,12 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles, Bell, Info } from "lucide-react";
+import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles, Bell, Info, Droplet } from "lucide-react";
 import { todayISODate } from "@/lib/store/util";
 import { useAuth } from "@/lib/useAuth";
-import { useDay, useSettings, useQueryClient, invalidateEntries } from "@/lib/queries";
+import { useDay, useSettings, useCycleLogs, useQueryClient, invalidateEntries } from "@/lib/queries";
+import { buildPhaseResolver } from "@/lib/cycle/engine";
+import { PHASE_META, predictionLine } from "@/lib/cycle/present";
 import { seedDemoData } from "@/lib/seed";
 import { formatLitres } from "@/lib/format";
 import { Screen } from "@/components/Screen";
@@ -32,11 +34,22 @@ export default function TodayPage() {
   const today = todayISODate();
   const dayQ = useDay(today, !!user);
   const settingsQ = useSettings(!!user);
+  const cycleEnabled = settingsQ.data?.cycleTrackingEnabled ?? false;
+  const cycleQ = useCycleLogs(!!user && cycleEnabled);
   const [showGuide, setShowGuide] = useState(false);
   const [seeding, setSeeding] = useState(false);
 
   const day = dayQ.data;
   const settings = settingsQ.data;
+
+  const cycleStatus = useMemo(() => {
+    if (!cycleEnabled || !cycleQ.data) return null;
+    const r = buildPhaseResolver(cycleQ.data, {
+      today,
+      avgPrior: settingsQ.data?.cycleAvgLengthDays ?? 28,
+    });
+    return { phase: r.phaseOf(today), prediction: r.prediction };
+  }, [cycleEnabled, cycleQ.data, today, settingsQ.data?.cycleAvgLengthDays]);
 
   const activities = useMemo<ActivityItem[]>(() => {
     if (!day) return [];
@@ -135,6 +148,27 @@ export default function TodayPage() {
           <Link href="/settings" className="flex items-center gap-2 rounded-2xl bg-primary-tint px-4 py-3 text-[12px] font-medium text-primary-press">
             <Sparkles size={15} /> Add your Gemini API key in Settings to enable voice logging
             <ChevronRight size={15} className="ml-auto" />
+          </Link>
+        )}
+
+        {/* Cycle (only when the optional module is on) */}
+        {cycleEnabled && cycleStatus && (
+          <Link
+            href="/cycle"
+            className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-tint text-primary">
+              <Droplet size={18} />
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="text-[13px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+                {cycleStatus.phase.phase !== "unknown"
+                  ? `${PHASE_META[cycleStatus.phase.phase].label} phase${cycleStatus.phase.cycleDay ? ` · day ${cycleStatus.phase.cycleDay}` : ""}`
+                  : "Cycle tracker"}
+              </span>
+              <span className="truncate text-[12px] text-muted">{predictionLine(cycleStatus.prediction)}</span>
+            </div>
+            <ChevronRight size={18} className="text-faint" />
           </Link>
         )}
 

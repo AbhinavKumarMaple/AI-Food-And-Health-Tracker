@@ -7,6 +7,7 @@ import {
   type KVBackend,
 } from "./kv";
 import type {
+  CycleLogPatch,
   DataStore,
   DateRange,
   NewFollowUp,
@@ -18,6 +19,7 @@ import type {
 } from "./dataStore";
 import type {
   CorrelationDataset,
+  CycleLog,
   DayDetail,
   DaySummary,
   FollowUpQuestion,
@@ -84,6 +86,8 @@ export class LocalDataStore implements DataStore {
       selectedModel: DEFAULT_MODEL,
       units: "metric",
       followUpAggressiveness: "medium",
+      cycleTrackingEnabled: false,
+      cycleAvgLengthDays: 28,
       updatedAt: nowIso(),
     };
     this.write("settings", def);
@@ -274,6 +278,48 @@ export class LocalDataStore implements DataStore {
     if (h) await this.recomputeDaySummary(toISODate(h.occurredAt));
   }
 
+  // ---- menstrual cycle -------------------------------------------------------
+
+  async listCycleLogs(range?: { start: ISODate; end: ISODate }): Promise<CycleLog[]> {
+    return this.read<CycleLog[]>("cycleLogs", [])
+      .filter((c) => !range || (c.date >= range.start && c.date <= range.end))
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+  }
+  async upsertCycleLog(date: ISODate, patch: CycleLogPatch): Promise<CycleLog> {
+    const list = this.read<CycleLog[]>("cycleLogs", []);
+    const idx = list.findIndex((c) => c.date === date);
+    const now = nowIso();
+    if (idx === -1) {
+      const created: CycleLog = {
+        id: newId(),
+        userId: this.uid(),
+        date,
+        isPeriodStart: false,
+        flow: null,
+        clots: false,
+        flooding: false,
+        bbtCelsius: null,
+        cervicalMucus: null,
+        ovulationTest: null,
+        intercourse: null,
+        notes: null,
+        source: "manual",
+        createdAt: now,
+        updatedAt: now,
+        ...patch,
+      };
+      list.push(created);
+      this.write("cycleLogs", list);
+      return created;
+    }
+    list[idx] = { ...list[idx], ...patch, id: list[idx].id, date, userId: this.uid(), updatedAt: now };
+    this.write("cycleLogs", list);
+    return list[idx];
+  }
+  async deleteCycleLog(date: ISODate): Promise<void> {
+    this.write("cycleLogs", this.read<CycleLog[]>("cycleLogs", []).filter((c) => c.date !== date));
+  }
+
   // ---- queries ---------------------------------------------------------------
 
   async listMeals(range?: DateRange): Promise<Meal[]> {
@@ -459,11 +505,15 @@ export class LocalDataStore implements DataStore {
   // ---- bulk ------------------------------------------------------------------
 
   async getCorrelationDataset(range?: DateRange): Promise<CorrelationDataset> {
+    const dateRange = range
+      ? { start: toISODate(range.start), end: toISODate(range.end) }
+      : undefined;
     return {
       meals: await this.listMeals(range),
       symptoms: await this.listSymptoms(range),
       moods: await this.listMoods(range),
       hydration: await this.listHydration(range),
+      cycleLogs: await this.listCycleLogs(dateRange),
     };
   }
 
@@ -488,6 +538,7 @@ export class LocalDataStore implements DataStore {
       "symptoms",
       "moods",
       "hydration",
+      "cycleLogs",
       "daySummaries",
       "sessions",
       "followUps",

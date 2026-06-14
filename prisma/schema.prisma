@@ -122,6 +122,14 @@ model UserSettings {
   units                  Units                  @default(metric)
   followUpAggressiveness FollowUpAggressiveness @default(medium)
 
+  // Menstrual cycle tracking is fully optional and off by default. Avni is a
+  // food/mood/health tracker for everyone; this only switches on the cycle
+  // module for users who choose to track it. Gated on this flag, never on `sex`.
+  cycleTrackingEnabled Boolean @default(false)
+  // User's own expected cycle length, used as a gentle prior before enough
+  // periods are logged to learn a personal one (population default ~28).
+  cycleAvgLengthDays Int @default(28)
+
   updatedAt DateTime @updatedAt
 }
 
@@ -280,6 +288,44 @@ model FollowUpQuestion {
   answeredAt DateTime?
 
   @@index([userId, status])
+}
+
+// One row per calendar day the user logs menstruation-specific data. Holds only
+// the fields that have no home in Meal/Symptom/Mood (flow, period start, optional
+// fertility biomarkers). Cycle-linked symptoms & mood reuse the existing Symptom/
+// Mood models and are tagged with a derived phase by the analytics layer — never
+// duplicated here. Cycles, phases, predictions and deviations are DERIVED from
+// these day rows in application code, not stored.
+model CycleLog {
+  id     String @id @default(cuid())
+  userId String
+
+  date String // YYYY-MM-DD (user's local calendar day)
+
+  // Day 1 of a period — the anchor for cycle length, phase, and prediction.
+  isPeriodStart Boolean @default(false)
+  // none | spotting | light | medium | heavy | flooding (null = not a bleeding day)
+  flow String?
+  // Larger-than-a-coin clots, flooding/gushing — heavy-bleeding red-flag inputs.
+  clots     Boolean @default(false)
+  flooding  Boolean @default(false)
+
+  // Optional fertility biomarkers (advanced; most users log none).
+  bbtCelsius    Float?
+  cervicalMucus String? // dry | sticky | creamy | watery | eggwhite
+  ovulationTest String? // negative | positive
+
+  // Optional, private. Excluded from any shared/exported view by default.
+  intercourse Boolean?
+
+  notes  String?     @db.Text
+  source EntrySource @default(manual)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
 
 model Insight {

@@ -29,5 +29,6 @@ export type {
   NewHydration,
   NewFollowUp,
   NewLogSession,
+  CycleLogPatch,
   DateRange,
 } from "./dataStore";

@@ -1,4 +1,5 @@
 import type {
+  CycleLog,
   DayDetail,
   DaySummary,
   FollowUpQuestion,
@@ -31,6 +32,11 @@ export type NewSymptom = Omit<
 
 export type NewMood = Omit<Mood, "id" | "userId" | "createdAt" | "updatedAt">;
 export type NewHydration = Omit<HydrationLog, "id" | "userId" | "createdAt">;
+
+/** Fields a caller may set on a cycle day; the store owns id/userId/date/timestamps. */
+export type CycleLogPatch = Partial<
+  Omit<CycleLog, "id" | "userId" | "date" | "createdAt" | "updatedAt">
+>;
 
 export type NewFollowUp = Omit<
   FollowUpQuestion,
@@ -94,6 +100,11 @@ export interface DataStore {
   addHydration(h: NewHydration): Promise<HydrationLog>;
   updateHydration(id: ID, patch: Partial<HydrationLog>): Promise<HydrationLog>;
   deleteHydration(id: ID): Promise<void>;
+
+  // menstrual cycle (optional module): one upsertable row per local calendar day
+  listCycleLogs(range?: { start: ISODate; end: ISODate }): Promise<CycleLog[]>;
+  upsertCycleLog(date: ISODate, patch: CycleLogPatch): Promise<CycleLog>;
+  deleteCycleLog(date: ISODate): Promise<void>;
 
   // queries by time window
   listMeals(range?: DateRange): Promise<Meal[]>;

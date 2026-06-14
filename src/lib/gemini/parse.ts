@@ -44,6 +44,8 @@ export type ParseLogInput = {
   /** Current instant the log refers to (defaults handled by caller). */
   now: Date;
   user: UserHealthContext;
+  /** When true, also parse menstrual-cycle mentions (opt-in feature). */
+  cycleTracking?: boolean;
 };
 
 const SYSTEM_INSTRUCTION = `You are a meticulous nutrition and health logging assistant.
@@ -104,6 +106,29 @@ Regional & multilingual handling:
 
 Output ONLY JSON matching the requested shape. No markdown, no commentary.`;
 
+// Appended only when the user has cycle tracking ON. Same fidelity rules apply:
+// only capture what was actually said.
+const CYCLE_INSTRUCTION = `
+
+Menstrual cycle (the user has cycle tracking ENABLED):
+- If — and only if — the user mentions their period, bleeding, flow, spotting, or a
+  fertility sign, add entries to "cycle". Never infer cycle data from anything else.
+- "my period started" / "got my period" / "day one" -> { event: "period_start", isPeriodStart: true,
+  flow: <level if stated else null> }.
+- Bleeding level words map to flow: spotting | light | medium | heavy | flooding. "passing clots" -> clots:true;
+  "flooding"/"gushing" -> flooding:true.
+- "spotting" (not a full period) -> { event: "spotting", flow: "spotting", isPeriodStart: false }.
+- "temperature/BBT was 36.6" -> { event: "bbt", bbtCelsius: 36.6 }.
+- "ovulation test positive/negative" -> { event: "ovulation_test", ovulationTest: "positive"|"negative" }.
+- cervicalMucus: dry|sticky|creamy|watery|eggwhite if described.
+- Resolve a stated date into occurredAt (one entry per day); keep the raw mention in timeText.
+- Cycle-related SYMPTOMS (cramps, bloating, breast tenderness, headache, low mood) still go in "symptoms"/"moods"
+  as usual — NOT in "cycle". "cycle" is only for bleeding/flow and fertility-sign data.`;
+
+const NO_CYCLE_INSTRUCTION = `
+
+The user does NOT track their menstrual cycle: always return "cycle": []. Never create cycle entries.`;
+
 function buildContextText(input: ParseLogInput): string {
   const { now, user, typedText } = input;
   const lines = [
@@ -132,6 +157,9 @@ function buildContextText(input: ParseLogInput): string {
       "bodyLocation,description,suspectedFoodText,completenessScore,aiConfidence}], " +
       "moods:[{rating,label,occurredAt,timeText,energyLevel,stressLevel,notes}], " +
       "hydration:[{amountMl,beverageType,occurredAt,timeText}], " +
+      (input.cycleTracking
+        ? "cycle:[{event,isPeriodStart,flow,clots,flooding,bbtCelsius,cervicalMucus,ovulationTest,occurredAt,timeText,note}], "
+        : "cycle:[], ") +
       "followUps:[{targetType,targetIndex,questionText,fieldHint}] }",
   );
   if (typedText?.trim()) {
@@ -192,7 +220,8 @@ export async function parseLogSession(
       model: input.model,
       contents: [{ role: "user", parts: attemptParts }],
       config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
+        systemInstruction:
+          SYSTEM_INSTRUCTION + (input.cycleTracking ? CYCLE_INSTRUCTION : NO_CYCLE_INSTRUCTION),
         responseMimeType: "application/json",
         temperature: 0,
       },

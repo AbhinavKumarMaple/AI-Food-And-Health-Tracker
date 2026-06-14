@@ -21,6 +21,7 @@ export const qk = {
   day: (date: ISODate) => ["day", date] as const,
   daySummaries: ["daySummaries"] as const,
   correlation: ["correlationDataset"] as const,
+  cycleLogs: ["cycleLogs"] as const,
 };
 
 export function useCurrentUser() {
@@ -59,11 +60,20 @@ export function useCorrelationDataset(enabled = true) {
   });
 }
 
+export function useCycleLogs(enabled = true) {
+  return useQuery({
+    queryKey: qk.cycleLogs,
+    queryFn: () => getStore().listCycleLogs(),
+    enabled,
+  });
+}
+
 /** Invalidate everything that depends on logged entries (after add/edit/delete). */
 export function invalidateEntries(client: QueryClient) {
   client.invalidateQueries({ queryKey: ["day"] });
   client.invalidateQueries({ queryKey: qk.daySummaries });
   client.invalidateQueries({ queryKey: qk.correlation });
+  client.invalidateQueries({ queryKey: qk.cycleLogs });
 }
 
 export { useQueryClient };

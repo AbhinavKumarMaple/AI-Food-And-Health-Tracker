@@ -5,6 +5,7 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { endOfDayIso, roundRating, timeWeightedRating } from "@/lib/patterns/dayRating";
 import { moodLabel } from "@/lib/format";
 import type {
+  CycleLogPatch,
   DataStore,
   DateRange,
   NewFollowUp,
@@ -16,6 +17,7 @@ import type {
 } from "@/lib/store/dataStore";
 import type {
   CorrelationDataset,
+  CycleLog,
   DayDetail,
   DaySummary,
   FollowUpQuestion,
@@ -138,6 +140,26 @@ function hydrationToDomain(r: Row): HydrationLog {
     notes: (r.notes as string) ?? null,
     source: r.source as HydrationLog["source"],
     createdAt: (r.createdAt as Date).toISOString(),
+  };
+}
+
+function cycleLogToDomain(r: Row): CycleLog {
+  return {
+    id: r.id as string,
+    userId: r.userId as string,
+    date: r.date as string,
+    isPeriodStart: r.isPeriodStart as boolean,
+    flow: (r.flow as CycleLog["flow"]) ?? null,
+    clots: r.clots as boolean,
+    flooding: r.flooding as boolean,
+    bbtCelsius: (r.bbtCelsius as number) ?? null,
+    cervicalMucus: (r.cervicalMucus as CycleLog["cervicalMucus"]) ?? null,
+    ovulationTest: (r.ovulationTest as CycleLog["ovulationTest"]) ?? null,
+    intercourse: (r.intercourse as boolean) ?? null,
+    notes: (r.notes as string) ?? null,
+    source: r.source as CycleLog["source"],
+    createdAt: (r.createdAt as Date).toISOString(),
+    updatedAt: (r.updatedAt as Date).toISOString(),
   };
 }
 
@@ -298,6 +320,8 @@ export class PrismaDataStore implements DataStore {
       selectedModel: row.selectedModel,
       units: row.units,
       followUpAggressiveness: row.followUpAggressiveness,
+      cycleTrackingEnabled: row.cycleTrackingEnabled,
+      cycleAvgLengthDays: row.cycleAvgLengthDays,
       updatedAt: row.updatedAt.toISOString(),
     };
   }
@@ -320,6 +344,10 @@ export class PrismaDataStore implements DataStore {
     if (patch.units !== undefined) data.units = patch.units;
     if (patch.followUpAggressiveness !== undefined)
       data.followUpAggressiveness = patch.followUpAggressiveness;
+    if (patch.cycleTrackingEnabled !== undefined)
+      data.cycleTrackingEnabled = patch.cycleTrackingEnabled;
+    if (patch.cycleAvgLengthDays !== undefined)
+      data.cycleAvgLengthDays = patch.cycleAvgLengthDays;
 
     await prisma.userSettings.upsert({
       where: { userId: this.userId },
@@ -610,6 +638,44 @@ export class PrismaDataStore implements DataStore {
     await this.recomputeDaySummary(userLocalDate(existing.occurredAt, await this.tz()));
   }
 
+  // ---- menstrual cycle ------------------------------------------------------
+
+  async listCycleLogs(range?: { start: ISODate; end: ISODate }): Promise<CycleLog[]> {
+    const rows = await prisma.cycleLog.findMany({
+      where: {
+        userId: this.userId,
+        ...(range ? { date: { gte: range.start, lte: range.end } } : {}),
+      },
+      orderBy: { date: "asc" },
+    });
+    return rows.map((r) => cycleLogToDomain(r as Row));
+  }
+
+  async upsertCycleLog(date: ISODate, patch: CycleLogPatch): Promise<CycleLog> {
+    const data: Record<string, unknown> = {};
+    if (patch.isPeriodStart !== undefined) data.isPeriodStart = patch.isPeriodStart;
+    if (patch.flow !== undefined) data.flow = patch.flow;
+    if (patch.clots !== undefined) data.clots = patch.clots;
+    if (patch.flooding !== undefined) data.flooding = patch.flooding;
+    if (patch.bbtCelsius !== undefined) data.bbtCelsius = patch.bbtCelsius;
+    if (patch.cervicalMucus !== undefined) data.cervicalMucus = patch.cervicalMucus;
+    if (patch.ovulationTest !== undefined) data.ovulationTest = patch.ovulationTest;
+    if (patch.intercourse !== undefined) data.intercourse = patch.intercourse;
+    if (patch.notes !== undefined) data.notes = patch.notes;
+    if (patch.source !== undefined) data.source = patch.source;
+
+    const row = await prisma.cycleLog.upsert({
+      where: { userId_date: { userId: this.userId, date } },
+      create: { userId: this.userId, date, ...data } as Prisma.CycleLogUncheckedCreateInput,
+      update: data as Prisma.CycleLogUncheckedUpdateInput,
+    });
+    return cycleLogToDomain(row as Row);
+  }
+
+  async deleteCycleLog(date: ISODate): Promise<void> {
+    await prisma.cycleLog.deleteMany({ where: { userId: this.userId, date } });
+  }
+
   // ---- queries --------------------------------------------------------------
 
   private rangeWhere(range?: DateRange) {
@@ -830,13 +896,17 @@ export class PrismaDataStore implements DataStore {
   // ---- bulk & destructive ---------------------------------------------------
 
   async getCorrelationDataset(range?: DateRange): Promise<CorrelationDataset> {
-    const [meals, symptoms, moods, hydration] = await Promise.all([
+    const dateRange = range
+      ? { start: userLocalDate(range.start, await this.tz()), end: userLocalDate(range.end, await this.tz()) }
+      : undefined;
+    const [meals, symptoms, moods, hydration, cycleLogs] = await Promise.all([
       this.listMeals(range),
       this.listSymptoms(range),
       this.listMoods(range),
       this.listHydration(range),
+      this.listCycleLogs(dateRange),
     ]);
-    return { meals, symptoms, moods, hydration };
+    return { meals, symptoms, moods, hydration, cycleLogs };
   }
 
   async deleteDay(date: ISODate): Promise<void> {
@@ -854,6 +924,7 @@ export class PrismaDataStore implements DataStore {
     await prisma.symptom.deleteMany({ where });
     await prisma.mood.deleteMany({ where });
     await prisma.hydrationLog.deleteMany({ where });
+    await prisma.cycleLog.deleteMany({ where });
     await prisma.daySummary.deleteMany({ where });
     await prisma.logSession.deleteMany({ where });
     await prisma.followUpQuestion.deleteMany({ where });

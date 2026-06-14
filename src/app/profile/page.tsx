@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Settings, LogOut, Check, ChevronRight, HeartPulse } from "lucide-react";
+import { Settings, LogOut, Check, ChevronRight, HeartPulse, Droplet } from "lucide-react";
 import { getAuth, getStore } from "@/lib/store";
 import type { User } from "@/lib/store/types";
 import { useAuth } from "@/lib/useAuth";
-import { useProfile, useQueryClient, qk, clearAllCache } from "@/lib/queries";
+import { useProfile, useSettings, useQueryClient, qk, clearAllCache } from "@/lib/queries";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { FormSkeleton } from "@/components/skeletons";
@@ -23,8 +23,15 @@ export default function ProfilePage() {
   const { user, loading } = useAuth();
   const queryClient = useQueryClient();
   const profQ = useProfile(!!user);
+  const settingsQ = useSettings(!!user);
   const [profile, setProfile] = useState<User | null>(null);
   const [saved, setSaved] = useState(false);
+
+  const cycleEnabled = settingsQ.data?.cycleTrackingEnabled ?? false;
+  async function toggleCycle(next: boolean) {
+    await getStore().updateSettings({ cycleTrackingEnabled: next });
+    queryClient.invalidateQueries({ queryKey: qk.settings });
+  }
 
   useEffect(() => {
     if (profQ.data) setProfile(profQ.data);
@@ -125,6 +132,28 @@ export default function ProfilePage() {
           </Card>
         </section>
 
+        {/* Cycle tracking (optional, all genders) */}
+        <section className="flex flex-col gap-2.5">
+          <h2 className="flex items-center gap-2 px-1 text-[13px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+            <Droplet size={15} className="text-primary" /> Cycle tracking
+          </h2>
+          <Card>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col">
+                <span className="text-[14px] font-semibold text-ink">Track my menstrual cycle</span>
+                <span className="text-[12px] text-muted">Optional. Predicts your period and separates cycle effects from food.</span>
+              </div>
+              <Toggle on={cycleEnabled} onChange={toggleCycle} />
+            </div>
+            {cycleEnabled && (
+              <Link href="/cycle" className="mt-3 flex items-center gap-2 rounded-xl bg-primary-tint px-3 py-2.5 text-[13px] font-semibold text-primary-press">
+                <Droplet size={15} /> Open cycle tracker
+                <ChevronRight size={15} className="ml-auto" />
+              </Link>
+            )}
+          </Card>
+        </section>
+
         {/* Links */}
         <Link href="/settings" className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3.5">
           <Settings size={18} className="text-muted" />
@@ -137,6 +166,26 @@ export default function ProfilePage() {
         </button>
       </div>
     </Screen>
+  );
+}
+
+function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      onClick={() => onChange(!on)}
+      className={
+        "relative h-7 w-12 shrink-0 rounded-full transition-colors " + (on ? "bg-primary" : "bg-line")
+      }
+    >
+      <span
+        className={
+          "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform " +
+          (on ? "translate-x-[22px]" : "translate-x-0.5")
+        }
+      />
+    </button>
   );
 }
 

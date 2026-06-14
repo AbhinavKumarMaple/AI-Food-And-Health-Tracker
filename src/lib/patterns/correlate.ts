@@ -6,11 +6,15 @@ import {
   lift as liftRatio,
 } from "./significance";
 import { plausibleMechanism, windowHoursFor } from "./knowledge";
+import { analyzeSymptomCyclePatterns } from "@/lib/cycle/confounder";
+import { todayISODate } from "@/lib/store/util";
 
 export type CorrelationOptions = {
   minExposures?: number; // min times a food was eaten to be considered
   minHits?: number; // min co-occurrences (unless explicitly suspected)
   maxResults?: number;
+  /** Expected cycle length prior, used by the phase confounder (default 28). */
+  cycleAvgLengthDays?: number;
 };
 
 export type EvidenceTier = "strong" | "likely" | "emerging";
@@ -37,6 +41,8 @@ export type Correlation = {
   strength: number; // 0..1 ranking score
   firstSeen: string | null;
   lastSeen: string | null;
+  /** True when this symptom clusters around the cycle, so the food link is suspect. */
+  cyclePhaseConfounded: boolean;
 };
 
 type Consumption = {
@@ -106,6 +112,15 @@ export function computeCorrelations(
 
   if (dataset.symptoms.length === 0 || dataset.meals.length === 0) return [];
 
+  // Cycle confounder: which symptoms cluster in the luteal/menstrual phase?
+  // Only active when the user tracks a cycle (dataset.cycleLogs present).
+  const cycleAnalysis = analyzeSymptomCyclePatterns(dataset, {
+    today: todayISODate(),
+    avgPrior: options.cycleAvgLengthDays ?? 28,
+  });
+  const cycleLinked = (symptomType: string): boolean =>
+    cycleAnalysis?.patterns.get(symptomType)?.cycleLinked ?? false;
+
   // Observation span (hours) across all logged events.
   const allTimes = [
     ...dataset.meals.map((m) => new Date(m.occurredAt).getTime()),
@@ -133,7 +148,10 @@ export function computeCorrelations(
     }
   }
 
-  type Candidate = Omit<Correlation, "qValue" | "evidenceTier" | "strength">;
+  type Candidate = Omit<
+    Correlation,
+    "qValue" | "evidenceTier" | "strength" | "cyclePhaseConfounded"
+  >;
   const candidates: Candidate[] = [];
 
   for (const consumptions of byKey.values()) {
@@ -202,14 +220,24 @@ export function computeCorrelations(
 
   const results: Correlation[] = candidates.map((c, i) => {
     const q = qValues[i];
-    const evidenceTier = tierFor(q, c.lift, c.supportCount);
+    let evidenceTier = tierFor(q, c.lift, c.supportCount);
     const sig = 1 - Math.min(q, 1);
     const liftScore = Math.min(1, Math.max(0, (c.lift - 1) / 3));
-    const strength = Math.min(
+    let strength = Math.min(
       1,
       0.5 * sig + 0.3 * liftScore + (c.plausible ? 0.1 : 0) + (c.explicitMentions > 0 ? 0.1 : 0),
     );
-    return { ...c, qValue: q, evidenceTier, strength };
+
+    // Cycle confounder: if this symptom clusters around the cycle, the food link
+    // is suspect. Demote (cap at "likely", penalise rank) and flag it — but never
+    // delete it, so a genuine trigger eaten premenstrually isn't silently lost.
+    const confounded = cycleLinked(c.objectValue);
+    if (confounded && c.explicitMentions === 0) {
+      if (evidenceTier === "strong") evidenceTier = "likely";
+      strength = strength * 0.6;
+    }
+
+    return { ...c, qValue: q, evidenceTier, strength, cyclePhaseConfounded: confounded };
   });
 
   // Surface only associations with some evidence; the tier conveys confidence.
@@ -243,6 +271,7 @@ export type InsightEvidence = {
   mechanism: string | null;
   onset: string | null;
   explicit: boolean;
+  cyclePhaseConfounded: boolean;
 };
 
 /** Turn correlations into persistable Insight drafts with evidence-rich copy. */
@@ -258,6 +287,10 @@ export function correlationsToInsights(
     ];
     if (c.mechanism) parts.push(`Consistent with: ${c.mechanism} (typical onset ${c.onset}).`);
     if (c.explicitMentions > 0) parts.push("You've flagged this yourself, too.");
+    if (c.cyclePhaseConfounded)
+      parts.push(
+        `Heads up: your ${c.objectValue} tends to cluster around your cycle, so this may be partly cycle-driven rather than caused by ${c.subjectValue.toLowerCase()}.`,
+      );
 
     const evidence: InsightEvidence = {
       lift: c.lift,
@@ -271,6 +304,7 @@ export function correlationsToInsights(
       mechanism: c.mechanism,
       onset: c.onset,
       explicit: c.explicitMentions > 0,
+      cyclePhaseConfounded: c.cyclePhaseConfounded,
     };
 
     return {

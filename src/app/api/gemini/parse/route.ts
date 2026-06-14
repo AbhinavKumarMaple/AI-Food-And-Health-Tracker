@@ -10,6 +10,7 @@ type Body = {
   audioMime?: string | null;
   typedText?: string | null;
   user?: UserHealthContext;
+  cycleTracking?: boolean;
 };
 
 export async function POST(req: NextRequest) {
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
       typedText: body.typedText ?? null,
       now: new Date(),
       user: body.user ?? { timezone: "UTC" },
+      cycleTracking: body.cycleTracking ?? false,
     });
     return NextResponse.json(result);
   } catch (e) {

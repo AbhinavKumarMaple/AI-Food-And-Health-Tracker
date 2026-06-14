@@ -209,6 +209,21 @@ The full request Gemini receives (`ai.models.generateContent`):
 - **What:** the food→symptom insight sentences on the Stats screen are produced by a
   **deterministic statistical engine** (lift, binomial significance, FDR) + **string
   templates** — there is no LLM call here. The "AI"-looking copy is generated from the stats.
+- **Cycle confounder:** when the user tracks their cycle, `computeCorrelations` checks
+  (via `src/lib/cycle/confounder.ts`) whether each symptom clusters in the luteal/menstrual
+  phase. If so, the food→symptom link is **demoted** (tier capped, ranked lower) and the copy
+  appends a "this may be partly cycle-driven" note — it is never silently deleted.
+
+## 8. Parse — Cycle instruction (dynamic, opt-in)
+
+- **File:** `CYCLE_INSTRUCTION` / `NO_CYCLE_INSTRUCTION` in `src/lib/gemini/parse.ts`
+- **When:** appended to the system instruction **only if** the user has cycle tracking ON
+  (`settings.cycleTrackingEnabled`, passed as `cycleTracking` from the record screen → parse API).
+- **What:** asks the model to map period/flow/spotting/BBT/ovulation-test mentions into a
+  `cycle[]` array — under the same FIDELITY rules (only what was said). When tracking is OFF,
+  `NO_CYCLE_INSTRUCTION` forces `cycle: []`. Cycle-linked *symptoms*/*mood* still go in
+  `symptoms`/`moods`, not `cycle`. Cycle insights/predictions are **NOT AI** — they come from
+  the deterministic engine in `src/lib/cycle/engine.ts`.
 
 ---
 
@@ -223,3 +238,6 @@ The full request Gemini receives (`ai.models.generateContent`):
 | Temperature / JSON mode / retries | the `config` + `generateWithRetry` in `parse.ts` |
 | Live-transcript language | `speechLangFor()` in `src/app/record/page.tsx` + `useRecorder.ts` |
 | Insight wording (non-AI) | `correlationsToInsights()` in `src/lib/patterns/correlate.ts` |
+| Cycle voice parsing (opt-in) | `CYCLE_INSTRUCTION` in `src/lib/gemini/parse.ts` + `cycle` in `schema.ts` |
+| Cycle math (prediction/phase/flags) | `src/lib/cycle/engine.ts` (deterministic, not AI) |
+| Cycle confounder on food insights | `src/lib/cycle/confounder.ts` |

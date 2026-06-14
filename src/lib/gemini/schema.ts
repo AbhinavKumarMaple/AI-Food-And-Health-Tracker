@@ -87,6 +87,23 @@ export const parsedHydrationSchema = z.object({
   timeText: z.string().nullish(),
 });
 
+// Menstrual-cycle mentions ("my period started", "spotting today", "heavy flow",
+// "temp was 36.6", "ovulation test positive"). Only requested when the user has
+// cycle tracking ON; the field always exists so validation never breaks.
+export const parsedCycleSchema = z.object({
+  event: z.string().default("flow"), // period_start | flow | spotting | bbt | ovulation_test
+  isPeriodStart: z.boolean().nullish(),
+  flow: z.string().nullish(), // spotting | light | medium | heavy | flooding | none
+  clots: z.boolean().nullish(),
+  flooding: z.boolean().nullish(),
+  bbtCelsius: looseNum,
+  cervicalMucus: z.string().nullish(),
+  ovulationTest: z.string().nullish(),
+  occurredAt: z.string().nullish(),
+  timeText: z.string().nullish(),
+  note: z.string().nullish(),
+});
+
 export const parsedFollowUpSchema = z.object({
   // Normalized to a valid FollowUpTargetType in draft.ts.
   targetType: z.string(),
@@ -102,6 +119,7 @@ export const parseResultSchema = z.object({
   symptoms: z.array(parsedSymptomSchema).default([]),
   moods: z.array(parsedMoodSchema).default([]),
   hydration: z.array(parsedHydrationSchema).default([]),
+  cycle: z.array(parsedCycleSchema).default([]),
   followUps: z.array(parsedFollowUpSchema).default([]),
   // A short natural-language recap, e.g. "Here's what we heard".
   recap: z.string().nullish(),
@@ -111,5 +129,6 @@ export type ParsedMeal = z.infer<typeof parsedMealSchema>;
 export type ParsedSymptom = z.infer<typeof parsedSymptomSchema>;
 export type ParsedMood = z.infer<typeof parsedMoodSchema>;
 export type ParsedHydration = z.infer<typeof parsedHydrationSchema>;
+export type ParsedCycle = z.infer<typeof parsedCycleSchema>;
 export type ParsedFollowUp = z.infer<typeof parsedFollowUpSchema>;
 export type ParseResult = z.infer<typeof parseResultSchema>;

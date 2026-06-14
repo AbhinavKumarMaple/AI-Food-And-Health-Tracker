@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Sparkles, Trash2, Check, Pencil, ChevronLeft, MessageCircleQuestion } from "lucide-react";
+import { Sparkles, Trash2, Check, Pencil, ChevronLeft, MessageCircleQuestion, Droplet } from "lucide-react";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import { useQueryClient, invalidateEntries } from "@/lib/queries";
@@ -99,6 +99,7 @@ export default function ReviewPage() {
     for (const m of drafts.moods) moodIds.push((await store.addMood(m)).id);
     const hydrationIds: string[] = [];
     for (const h of drafts.hydration) hydrationIds.push((await store.addHydration(h)).id);
+    for (const c of drafts.cycle) await store.upsertCycleLog(c.date, c.patch);
 
     const fuPayload = drafts.followUps.map((f) => {
       let targetId: string | null = null;
@@ -185,6 +186,7 @@ export default function ReviewPage() {
             {counts.symptoms > 0 && <DarkChip>{counts.symptoms} symptom{counts.symptoms === 1 ? "" : "s"}</DarkChip>}
             {counts.moods > 0 && <DarkChip>{counts.moods} mood</DarkChip>}
             {counts.hydration > 0 && <DarkChip>{counts.hydration} drink{counts.hydration === 1 ? "" : "s"}</DarkChip>}
+            {drafts.cycle.length > 0 && <DarkChip>{drafts.cycle.length} cycle</DarkChip>}
           </div>
         </GradientPanel>
 
@@ -336,6 +338,28 @@ export default function ReviewPage() {
                   <span className="flex-1 text-[14px] font-semibold text-ink capitalize" style={{ fontFamily: "var(--font-display)" }}>{h.beverageType}</span>
                   <span className="text-[13px] text-muted">{h.amountMl} ml</span>
                   <DelBtn onClick={() => removeFrom("hydration", i)} />
+                </div>
+              </Card>
+            ))}
+          </Section>
+        )}
+
+        {/* Cycle */}
+        {drafts.cycle.length > 0 && (
+          <Section title="Cycle">
+            {drafts.cycle.map((c, i) => (
+              <Card key={`cyc-${i}`}>
+                <div className="flex items-center gap-3">
+                  <IconBadge icon={Droplet} tone="danger" size={36} />
+                  <div className="flex flex-1 flex-col">
+                    <span className="text-[14px] font-semibold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+                      {c.label}
+                    </span>
+                    <span className="text-[12px] text-muted">
+                      {new Date(`${c.date}T12:00:00`).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
+                    </span>
+                  </div>
+                  <DelBtn onClick={() => removeFrom("cycle", i)} />
                 </div>
               </Card>
             ))}

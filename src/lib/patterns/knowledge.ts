@@ -28,6 +28,12 @@ const SYMPTOM_WINDOW_HOURS: Record<string, number> = {
   insomnia: 16,
   sleep: 16,
   palpitations: 6,
+  // Cycle-linked symptoms (mostly hormonal, not food-driven — handled by the
+  // cycle confounder; windows here are only used if a food link is tested).
+  breast_tenderness: 24,
+  back_pain: 24,
+  acne: 24,
+  cramps_menstrual: 24,
 };
 
 export const DEFAULT_WINDOW_HOURS = 6;

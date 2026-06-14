@@ -91,6 +91,7 @@ export default function RecordPage() {
           audioBase64,
           audioMime: result?.blob.type ?? null,
           typedText: note.trim() || null,
+          cycleTracking: settings.cycleTrackingEnabled,
           user: {
             timezone: profile.timezone,
             knownAllergies: profile.knownAllergies,

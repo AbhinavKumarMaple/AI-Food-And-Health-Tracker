@@ -1,4 +1,5 @@
 import type {
+  CycleLogPatch,
   DataStore,
   DateRange,
   NewFollowUp,
@@ -10,6 +11,7 @@ import type {
 } from "./dataStore";
 import type {
   CorrelationDataset,
+  CycleLog,
   DayDetail,
   DaySummary,
   FollowUpQuestion,
@@ -102,6 +104,16 @@ export class ApiDataStore implements DataStore {
   }
   deleteHydration(id: ID) {
     return rpc<void>("deleteHydration", [id]);
+  }
+
+  listCycleLogs(range?: { start: ISODate; end: ISODate }) {
+    return rpc<CycleLog[]>("listCycleLogs", [range]);
+  }
+  upsertCycleLog(date: ISODate, patch: CycleLogPatch) {
+    return rpc<CycleLog>("upsertCycleLog", [date, patch]);
+  }
+  deleteCycleLog(date: ISODate) {
+    return rpc<void>("deleteCycleLog", [date]);
   }
 
   listMeals(range?: DateRange) {

@@ -1,7 +1,7 @@
 import type { ParseResult } from "@/lib/gemini/schema";
-import type { NewHydration, NewMeal, NewMood, NewSymptom } from "@/lib/store";
-import type { FollowUpTargetType } from "@/lib/store/types";
-import { nowIso } from "@/lib/store/util";
+import type { CycleLogPatch, NewHydration, NewMeal, NewMood, NewSymptom } from "@/lib/store";
+import type { CervicalMucus, FlowLevel, FollowUpTargetType, ISODate, OvulationTest } from "@/lib/store/types";
+import { nowIso, toISODate } from "@/lib/store/util";
 
 export type DraftFollowUp = {
   targetType: FollowUpTargetType;
@@ -11,12 +11,20 @@ export type DraftFollowUp = {
   answerText: string | null;
 };
 
+/** A cycle day to upsert, with a human label for the review screen. */
+export type DraftCycleDay = {
+  date: ISODate;
+  label: string;
+  patch: CycleLogPatch;
+};
+
 export type Drafts = {
   recap: string | null;
   meals: NewMeal[];
   symptoms: NewSymptom[];
   moods: NewMood[];
   hydration: NewHydration[];
+  cycle: DraftCycleDay[];
   followUps: DraftFollowUp[];
 };
 
@@ -60,6 +68,33 @@ const FU_TYPES: FollowUpTargetType[] = ["meal", "symptom", "mood", "hydration", 
 function normTargetType(t: string): FollowUpTargetType {
   const v = (t || "").toLowerCase().trim() as FollowUpTargetType;
   return FU_TYPES.includes(v) ? v : "general";
+}
+
+const FLOW_LEVELS: FlowLevel[] = ["none", "spotting", "light", "medium", "heavy", "flooding"];
+function normFlow(v: string | null | undefined): FlowLevel | null {
+  const s = (v ?? "").toLowerCase().trim();
+  if (s === "moderate") return "medium";
+  return (FLOW_LEVELS as string[]).includes(s) ? (s as FlowLevel) : null;
+}
+const MUCUS: CervicalMucus[] = ["dry", "sticky", "creamy", "watery", "eggwhite"];
+function normMucus(v: string | null | undefined): CervicalMucus | null {
+  const s = (v ?? "").toLowerCase().replace(/[\s-]/g, "");
+  return (MUCUS as string[]).includes(s) ? (s as CervicalMucus) : null;
+}
+function normOvTest(v: string | null | undefined): OvulationTest | null {
+  const s = (v ?? "").toLowerCase().trim();
+  if (s.includes("pos")) return "positive";
+  if (s.includes("neg")) return "negative";
+  return null;
+}
+function cycleLabel(patch: CycleLogPatch): string {
+  if (patch.isPeriodStart) return "Period started";
+  if (patch.flow === "spotting") return "Spotting";
+  if (patch.flow) return `${patch.flow[0].toUpperCase()}${patch.flow.slice(1)} flow`;
+  if (patch.bbtCelsius != null) return `Temperature ${patch.bbtCelsius}°C`;
+  if (patch.ovulationTest) return `Ovulation test ${patch.ovulationTest}`;
+  if (patch.cervicalMucus) return `Cervical fluid: ${patch.cervicalMucus}`;
+  return "Cycle note";
 }
 
 export function draftsFromParseResult(result: ParseResult, sessionId: string): Drafts {
@@ -149,6 +184,35 @@ export function draftsFromParseResult(result: ParseResult, sessionId: string): D
       source: "voice",
     }));
 
+  // Merge cycle mentions by calendar day (one upsert per date).
+  const cycleByDate = new Map<ISODate, CycleLogPatch>();
+  for (const c of result.cycle ?? []) {
+    const date = toISODate(resolveIso(c.occurredAt, fallback));
+    const patch: CycleLogPatch = { ...(cycleByDate.get(date) ?? {}), source: "voice" };
+    const flow = normFlow(c.flow);
+    const isStart = c.event === "period_start" || c.isPeriodStart === true;
+    if (isStart) {
+      patch.isPeriodStart = true;
+      patch.flow = flow ?? patch.flow ?? "medium";
+    } else if (flow) {
+      patch.flow = flow;
+    }
+    if (c.clots === true) patch.clots = true;
+    if (c.flooding === true) patch.flooding = true;
+    if (c.bbtCelsius != null && !Number.isNaN(c.bbtCelsius)) patch.bbtCelsius = c.bbtCelsius;
+    const mucus = normMucus(c.cervicalMucus);
+    if (mucus) patch.cervicalMucus = mucus;
+    const ov = normOvTest(c.ovulationTest);
+    if (ov) patch.ovulationTest = ov;
+    if (c.note) patch.notes = c.note;
+    cycleByDate.set(date, patch);
+  }
+  const cycle: DraftCycleDay[] = [...cycleByDate.entries()].map(([date, patch]) => ({
+    date,
+    label: cycleLabel(patch),
+    patch,
+  }));
+
   const followUps: DraftFollowUp[] = result.followUps.map((f) => ({
     targetType: normTargetType(f.targetType),
     targetIndex: f.targetIndex ?? null,
@@ -157,5 +221,5 @@ export function draftsFromParseResult(result: ParseResult, sessionId: string): D
     answerText: null,
   }));
 
-  return { recap: result.recap ?? null, meals, symptoms, moods, hydration, followUps };
+  return { recap: result.recap ?? null, meals, symptoms, moods, hydration, cycle, followUps };
 }
