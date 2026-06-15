@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatTime, moodLabel } from "@/lib/format";
 import { mealIcon, symptomIcon, beverageIcon } from "@/lib/icons";
@@ -200,7 +200,15 @@ type ActivityItem =
   | { kind: "mood"; data: Mood }
   | { kind: "hydration"; data: HydrationLog };
 
-export function ActivityRow({ item, onClick }: { item: ActivityItem; onClick?: () => void }) {
+export function ActivityRow({
+  item,
+  onClick,
+  onDelete,
+}: {
+  item: ActivityItem;
+  onClick?: () => void;
+  onDelete?: () => void;
+}) {
   let Icon, tone: "orange" | "danger" | "warm", title: string, subtitle: string, time: string;
   if (item.kind === "meal") {
     Icon = mealIcon(item.data.mealType);
@@ -241,6 +249,18 @@ export function ActivityRow({ item, onClick }: { item: ActivityItem; onClick?: (
         <span className="shrink-0 text-[11px] font-medium text-faint" style={{ fontFamily: "var(--font-label)" }}>
           {time}
         </span>
+        {onDelete && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            aria-label="Delete entry"
+            className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-faint transition active:scale-95 hover:bg-danger-tint hover:text-danger"
+          >
+            <Trash2 size={15} />
+          </button>
+        )}
       </div>
     </Card>
   );

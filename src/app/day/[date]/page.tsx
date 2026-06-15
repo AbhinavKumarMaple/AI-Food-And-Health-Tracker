@@ -12,7 +12,24 @@ import { RefreshButton } from "@/components/RefreshButton";
 import { Card, ActivityRow, type ActivityItem } from "@/components/cards";
 import { Chip, Stars } from "@/components/ui";
 import { EnvCard } from "@/components/EnvCard";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import { DaySkeleton, Skeleton, RowsSkeleton } from "@/components/skeletons";
+
+const KIND_LABEL: Record<ActivityItem["kind"], string> = {
+  meal: "meal",
+  symptom: "symptom",
+  mood: "mood entry",
+  hydration: "drink",
+};
 
 function dayTitle(rating: number | null | undefined): string {
   if (rating == null) return "Your day";
@@ -46,6 +63,8 @@ export default function DayDetailPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirm, setConfirm] = useState<"day" | "all" | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [pendingEntry, setPendingEntry] = useState<ActivityItem | null>(null);
+  const [deletingEntry, setDeletingEntry] = useState(false);
 
   const timeline = useMemo<ActivityItem[]>(() => {
     if (!day) return [];
@@ -70,6 +89,21 @@ export default function DayDetailPage() {
     else await store.clearAllData();
     invalidateEntries(queryClient);
     router.replace(confirm === "day" ? "/history" : "/");
+  }
+
+  async function deleteEntry(item: ActivityItem) {
+    setDeletingEntry(true);
+    const store = getStore();
+    try {
+      if (item.kind === "meal") await store.deleteMeal(item.data.id);
+      else if (item.kind === "symptom") await store.deleteSymptom(item.data.id);
+      else if (item.kind === "mood") await store.deleteMood(item.data.id);
+      else if (item.kind === "hydration") await store.deleteHydration(item.data.id);
+      invalidateEntries(queryClient);
+    } finally {
+      setDeletingEntry(false);
+      setPendingEntry(null);
+    }
   }
 
   if (loading || !user) {
@@ -219,12 +253,41 @@ export default function DayDetailPage() {
           ) : (
             <div className="flex flex-col gap-2.5">
               {timeline.map((item) => (
-                <ActivityRow key={`${item.kind}-${item.data.id}`} item={item} />
+                <ActivityRow
+                  key={`${item.kind}-${item.data.id}`}
+                  item={item}
+                  onDelete={() => setPendingEntry(item)}
+                />
               ))}
             </div>
           )}
         </section>
       </div>
+
+      {/* Per-entry delete confirmation (shadcn AlertDialog) */}
+      <AlertDialog open={!!pendingEntry} onOpenChange={(o) => !o && setPendingEntry(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this {pendingEntry ? KIND_LABEL[pendingEntry.kind] : "entry"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the entry from your log and your patterns. This can&apos;t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingEntry}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-danger"
+              disabled={deletingEntry}
+              onClick={(e) => {
+                e.preventDefault();
+                if (pendingEntry) deleteEntry(pendingEntry);
+              }}
+            >
+              {deletingEntry ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {confirm && (
         <ConfirmDialog

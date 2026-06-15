@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { FormSkeleton } from "@/components/skeletons";
 import { Card } from "@/components/cards";
 import { PrimaryButton } from "@/components/ui";
+import { Switch } from "@/components/ui/switch";
 
 function splitList(v: string): string[] {
   return v.split(",").map((s) => s.trim()).filter(Boolean);
@@ -149,7 +150,7 @@ export default function ProfilePage() {
                 <span className="text-[14px] font-semibold text-ink">Track my menstrual cycle</span>
                 <span className="text-[12px] text-muted">Optional. Predicts your period and separates cycle effects from food.</span>
               </div>
-              <Toggle on={cycleEnabled} onChange={toggleCycle} />
+              <Switch checked={cycleEnabled} onCheckedChange={toggleCycle} aria-label="Track my menstrual cycle" />
             </div>
             {cycleEnabled && (
               <Link href="/cycle" className="mt-3 flex items-center gap-2 rounded-xl bg-primary-tint px-3 py-2.5 text-[13px] font-semibold text-primary-press">
@@ -171,7 +172,7 @@ export default function ProfilePage() {
                 <span className="text-[14px] font-semibold text-ink">Auto-log weather &amp; surroundings</span>
                 <span className="text-[12px] text-muted">Free, coarse location only — weather, air quality, daylight, moon &amp; season for each day.</span>
               </div>
-              <Toggle on={envEnabled} onChange={toggleEnv} />
+              <Switch checked={envEnabled} onCheckedChange={toggleEnv} aria-label="Auto-log weather and surroundings" />
             </div>
           </Card>
         </section>
@@ -188,26 +189,6 @@ export default function ProfilePage() {
         </button>
       </div>
     </Screen>
-  );
-}
-
-function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={on}
-      onClick={() => onChange(!on)}
-      className={
-        "relative h-7 w-12 shrink-0 rounded-full transition-colors " + (on ? "bg-primary" : "bg-line")
-      }
-    >
-      <span
-        className={
-          "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform " +
-          (on ? "translate-x-[22px]" : "translate-x-0.5")
-        }
-      />
-    </button>
   );
 }
 
