@@ -24,6 +24,16 @@ export const metadata: Metadata = {
   title: "Avni · Food & Health Tracker",
   description:
     "Speak your meals, symptoms and mood. Avni structures it and surfaces what affects how you feel.",
+  applicationName: "Avni",
+  appleWebApp: {
+    capable: true,
+    title: "Avni",
+    statusBarStyle: "default",
+  },
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/apple-icon.png", sizes: "512x512" }],
+  },
 };
 
 export const viewport: Viewport = {

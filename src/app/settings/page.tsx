@@ -2,11 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, KeyRound, Cpu, LogOut, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { Check, KeyRound, Cpu, LogOut, RefreshCw, Smartphone, Mic, Share } from "lucide-react";
 import { getAuth, getStore } from "@/lib/store";
 import type { UserSettings, FollowUpAggressiveness, Units } from "@/lib/store/types";
 import { useAuth } from "@/lib/useAuth";
 import { useSettings, useGeminiModels, useQueryClient, qk, clearAllCache } from "@/lib/queries";
+import { useInstallPrompt } from "@/lib/useInstallPrompt";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { FormSkeleton } from "@/components/skeletons";
@@ -19,6 +21,7 @@ export default function SettingsPage() {
   const queryClient = useQueryClient();
   const settingsQ = useSettings(!!user);
   const settings = settingsQ.data ?? null;
+  const install = useInstallPrompt();
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -79,6 +82,44 @@ export default function SettingsPage() {
     <Screen showTab={false}>
       <PageHeader title="Settings" eyebrow="Preferences" />
       <div className="flex flex-col gap-5 px-5 pb-10 pt-2">
+        {/* Add to home screen */}
+        <section className="flex flex-col gap-2.5">
+          <h2 className="flex items-center gap-2 px-1 text-[13px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+            <Smartphone size={15} className="text-primary" /> Home-screen shortcut
+          </h2>
+          <Card>
+            <p className="text-[13px] leading-snug text-muted">
+              Add Avni to your phone&apos;s home screen so it opens like an app. Its{" "}
+              <span className="font-semibold text-ink">Quick voice log</span> shortcut jumps straight
+              into recording — no clicks, just talk.
+            </p>
+            {install.installed ? (
+              <div className="mt-3 flex items-center gap-2 rounded-xl bg-success-tint px-3 py-2.5 text-[13px] font-semibold text-success">
+                <Check size={15} /> Installed — long-press the icon for “Quick voice log”.
+              </div>
+            ) : install.canInstall ? (
+              <PrimaryButton icon={Smartphone} onClick={install.promptInstall} className="mt-3">
+                Add Avni to home screen
+              </PrimaryButton>
+            ) : install.isIOS ? (
+              <div className="mt-3 flex items-start gap-2 rounded-xl bg-canvas px-3 py-2.5 text-[12.5px] text-muted">
+                <Share size={15} className="mt-0.5 shrink-0 text-primary" />
+                <span>
+                  In Safari, tap the <span className="font-semibold text-ink">Share</span> button, then{" "}
+                  <span className="font-semibold text-ink">Add to Home Screen</span>.
+                </span>
+              </div>
+            ) : (
+              <p className="mt-3 text-[12px] text-faint">
+                Open Avni in Chrome or Safari on your phone to add it to your home screen.
+              </p>
+            )}
+            <Link href="/record" className="mt-3 flex items-center justify-center gap-1.5 text-[12.5px] font-semibold text-primary-press">
+              <Mic size={14} /> Try a quick voice log now
+            </Link>
+          </Card>
+        </section>
+
         {/* AI / Gemini */}
         <section className="flex flex-col gap-2.5">
           <h2 className="flex items-center gap-2 px-1 text-[13px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>

@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { Sparkles, Trash2, Check, Pencil, ChevronLeft, MessageCircleQuestion, Droplet } from "lucide-react";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
-import { useQueryClient, invalidateEntries } from "@/lib/queries";
+import { useQueryClient } from "@/lib/queries";
+import { saveLogOptimistic } from "@/lib/mutations";
 import { parseResultSchema } from "@/lib/gemini/schema";
 import { draftsFromParseResult, type Drafts } from "@/lib/draft";
 import { nowIso, toISODate } from "@/lib/store/util";
@@ -34,7 +35,6 @@ export default function ReviewPage() {
   const [drafts, setDrafts] = useState<Drafts | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -87,56 +87,18 @@ export default function ReviewPage() {
     router.replace("/");
   }
 
-  async function save() {
+  function save() {
     if (!drafts) return;
-    setSaving(true);
-    const store = getStore();
-    const mealIds: string[] = [];
-    for (const m of drafts.meals) mealIds.push((await store.addMeal(m)).id);
-    const symptomIds: string[] = [];
-    for (const s of drafts.symptoms) symptomIds.push((await store.addSymptom(s)).id);
-    const moodIds: string[] = [];
-    for (const m of drafts.moods) moodIds.push((await store.addMood(m)).id);
-    const hydrationIds: string[] = [];
-    for (const h of drafts.hydration) hydrationIds.push((await store.addHydration(h)).id);
-    for (const c of drafts.cycle) await store.upsertCycleLog(c.date, c.patch);
-
-    const fuPayload = drafts.followUps.map((f) => {
-      let targetId: string | null = null;
-      if (f.targetIndex != null) {
-        if (f.targetType === "meal") targetId = mealIds[f.targetIndex] ?? null;
-        else if (f.targetType === "symptom") targetId = symptomIds[f.targetIndex] ?? null;
-        else if (f.targetType === "mood") targetId = moodIds[f.targetIndex] ?? null;
-        else if (f.targetType === "hydration") targetId = hydrationIds[f.targetIndex] ?? null;
-      }
-      return {
-        logSessionId: id,
-        targetType: f.targetType,
-        targetId,
-        questionText: f.questionText,
-        fieldHint: f.fieldHint,
-        generatedBy: "ai",
-      };
-    });
-    const createdFu = await store.addFollowUps(fuPayload);
-    for (let i = 0; i < drafts.followUps.length; i++) {
-      const ans = drafts.followUps[i].answerText;
-      if (ans && ans.trim()) await store.answerFollowUp(createdFu[i].id, ans.trim());
-    }
-
-    await store.updateLogSession(id, {
-      parseStatus: "confirmed",
-      confirmedAt: nowIso(),
-      entryCount: mealIds.length + symptomIds.length + moodIds.length + hydrationIds.length,
-    });
-
     const firstIso =
       drafts.meals[0]?.occurredAt ??
       drafts.symptoms[0]?.occurredAt ??
       drafts.moods[0]?.occurredAt ??
       nowIso();
-    invalidateEntries(queryClient);
-    router.replace(`/day/${toISODate(firstIso)}`);
+    const date = toISODate(firstIso);
+    // Paint the entries into the day + persist in the background (with retries).
+    // The user goes straight to their day — no waiting on the network.
+    saveLogOptimistic({ queryClient, drafts, sessionId: id, date });
+    router.replace(`/day/${date}`);
   }
 
   if (loading || !user) return null;
@@ -389,8 +351,8 @@ export default function ReviewPage() {
         <button onClick={discard} className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl border border-line bg-surface text-[15px] font-semibold text-muted">
           <Trash2 size={18} /> Discard
         </button>
-        <PrimaryButton icon={Check} onClick={save} disabled={saving} className="flex-[2]">
-          {saving ? "Saving…" : "Save to today"}
+        <PrimaryButton icon={Check} onClick={save} className="flex-[2]">
+          Save to today
         </PrimaryButton>
       </div>
     </Screen>

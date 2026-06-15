@@ -4,6 +4,7 @@ import { useState } from "react";
 import { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { Toaster } from "sonner";
 import { AppWarmup } from "./AppWarmup";
 import { PERSIST_KEY } from "@/lib/queries";
 
@@ -42,6 +43,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
     >
       <AppWarmup />
       {children}
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          style: {
+            background: "var(--color-surface)",
+            color: "var(--color-ink)",
+            border: "1px solid var(--color-line)",
+            borderRadius: "16px",
+            fontFamily: "var(--font-body)",
+          },
+        }}
+      />
     </PersistQueryClientProvider>
   );
 }

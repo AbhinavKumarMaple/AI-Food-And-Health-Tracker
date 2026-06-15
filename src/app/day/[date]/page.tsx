@@ -6,6 +6,7 @@ import { ChevronLeft, MoreHorizontal, Utensils, Activity, Droplets, CheckCircle2
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import { useDay, useSettings, useDayContext, useQueryClient, invalidateEntries, ensureDayContext } from "@/lib/queries";
+import { deleteEntryOptimistic } from "@/lib/mutations";
 import { formatLitres, formatTime, moodLabel } from "@/lib/format";
 import { Screen } from "@/components/Screen";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -64,7 +65,6 @@ export default function DayDetailPage() {
   const [confirm, setConfirm] = useState<"day" | "all" | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [pendingEntry, setPendingEntry] = useState<ActivityItem | null>(null);
-  const [deletingEntry, setDeletingEntry] = useState(false);
 
   const timeline = useMemo<ActivityItem[]>(() => {
     if (!day) return [];
@@ -91,19 +91,11 @@ export default function DayDetailPage() {
     router.replace(confirm === "day" ? "/history" : "/");
   }
 
-  async function deleteEntry(item: ActivityItem) {
-    setDeletingEntry(true);
-    const store = getStore();
-    try {
-      if (item.kind === "meal") await store.deleteMeal(item.data.id);
-      else if (item.kind === "symptom") await store.deleteSymptom(item.data.id);
-      else if (item.kind === "mood") await store.deleteMood(item.data.id);
-      else if (item.kind === "hydration") await store.deleteHydration(item.data.id);
-      invalidateEntries(queryClient);
-    } finally {
-      setDeletingEntry(false);
-      setPendingEntry(null);
-    }
+  function deleteEntry(item: ActivityItem) {
+    // Optimistic: removes from the day immediately, deletes in the background
+    // (with retries), restores + toasts only if it ultimately fails.
+    deleteEntryOptimistic(queryClient, date, item.kind, item.data.id);
+    setPendingEntry(null);
   }
 
   if (loading || !user) {
@@ -274,16 +266,14 @@ export default function DayDetailPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingEntry}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-danger"
-              disabled={deletingEntry}
-              onClick={(e) => {
-                e.preventDefault();
+              onClick={() => {
                 if (pendingEntry) deleteEntry(pendingEntry);
               }}
             >
-              {deletingEntry ? "Deleting…" : "Delete"}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
