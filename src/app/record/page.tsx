@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, Pause, Play, Check, Square, Info, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import { useRecorder, formatElapsed, blobToBase64 } from "@/lib/useRecorder";
@@ -106,12 +107,18 @@ export default function RecordPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not process recording");
 
+      // If the selected model was busy and we fell back to another, let the user know.
+      const modelUsed: string | undefined = data.modelUsed;
+      if (modelUsed && modelUsed !== settings.selectedModel) {
+        toast.info(`${settings.selectedModel} was busy — used ${modelUsed} instead.`);
+      }
+
       const session = await store.createLogSession({
         inputType: audioBase64 ? (note.trim() ? "mixed" : "voice") : "text",
         audioDurationSeconds: Math.round(rec.elapsedMs / 1000),
         transcript: data.transcript ?? result?.transcript ?? null,
         typedTextBefore: note.trim() || null,
-        geminiModelUsed: settings.selectedModel,
+        geminiModelUsed: modelUsed ?? settings.selectedModel,
         rawAiResponse: data,
         parseStatus: "parsed",
       });

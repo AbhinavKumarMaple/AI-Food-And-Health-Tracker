@@ -11,6 +11,7 @@ type Body = {
   typedText?: string | null;
   user?: UserHealthContext;
   cycleTracking?: boolean;
+  fallbackModels?: string[];
 };
 
 export async function POST(req: NextRequest) {
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest) {
     if (!body.model) {
       return NextResponse.json({ error: "No model selected" }, { status: 400 });
     }
-    const result = await parseLogSession({
+    const { result, modelUsed } = await parseLogSession({
       apiKey: body.apiKey,
       model: body.model,
       audioBase64: body.audioBase64 ?? null,
@@ -31,8 +32,9 @@ export async function POST(req: NextRequest) {
       now: new Date(),
       user: body.user ?? { timezone: "UTC" },
       cycleTracking: body.cycleTracking ?? false,
+      fallbackModels: body.fallbackModels,
     });
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, modelUsed });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to parse log" },

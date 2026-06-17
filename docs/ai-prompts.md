@@ -235,7 +235,8 @@ The full request Gemini receives (`ai.models.generateContent`):
 | Per-request facts sent to the model | `buildContextText()` in `src/lib/gemini/parse.ts` |
 | The JSON shape the model returns | the "Required JSON shape" line in `buildContextText()` **and** the zod schema in `src/lib/gemini/schema.ts` |
 | Audio handling instruction | the `"Transcribe the audio above…"` part in `parseLogSession()` |
-| Temperature / JSON mode / retries | the `config` + `generateWithRetry` in `parse.ts` |
+| Temperature / JSON mode / schema retries | the `config` + `runModel()` in `parse.ts` |
+| Model fallback on 503/429 (busy) | `DEFAULT_FALLBACK_MODELS` + `buildModelChain()` in `parse.ts` (selected model tried first, then flash/flash-lite fallbacks; auth errors fail fast) |
 | Live-transcript language | `speechLangFor()` in `src/app/record/page.tsx` + `useRecorder.ts` |
 | Insight wording (non-AI) | `correlationsToInsights()` in `src/lib/patterns/correlate.ts` |
 | Cycle voice parsing (opt-in) | `CYCLE_INSTRUCTION` in `src/lib/gemini/parse.ts` + `cycle` in `schema.ts` |

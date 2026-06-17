@@ -2,25 +2,54 @@ import { getGeminiClient } from "./client";
 import { parseResultSchema, type ParseResult } from "./schema";
 
 type GenAiClient = ReturnType<typeof getGeminiClient>;
-type GenerateParams = Parameters<GenAiClient["models"]["generateContent"]>[0];
 
-/** Call Gemini, retrying once on transient overload (503 / UNAVAILABLE). */
-async function generateWithRetry(ai: GenAiClient, params: GenerateParams, attempts = 2) {
-  let lastErr: unknown;
-  for (let i = 0; i < attempts; i++) {
-    try {
-      return await ai.models.generateContent(params);
-    } catch (e) {
-      lastErr = e;
-      const msg = e instanceof Error ? e.message : String(e);
-      if (i < attempts - 1 && /503|unavailable|overloaded|high demand/i.test(msg)) {
-        await new Promise((r) => setTimeout(r, 1200));
-        continue;
-      }
-      throw e;
+/** Thrown when a model replies but its JSON fails our schema after retries. */
+class SchemaError extends Error {}
+
+/**
+ * Stable, widely-available flash / flash-lite models to fall back to when the
+ * selected model is overloaded (503 UNAVAILABLE), rate-limited, or unavailable.
+ * Ordered lightest / most-available first so capture keeps working under load.
+ */
+const DEFAULT_FALLBACK_MODELS = [
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite-001",
+  "gemini-2.0-flash-001",
+];
+
+/** Ordered, de-duplicated list of models to try: selected first, then fallbacks. */
+function buildModelChain(selected: string, provided?: string[]): string[] {
+  const seen = new Set<string>();
+  const chain: string[] = [];
+  const add = (m?: string) => {
+    const id = (m ?? "").trim();
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      chain.push(id);
     }
-  }
-  throw lastErr;
+  };
+  add(selected);
+  for (const m of provided && provided.length ? provided : DEFAULT_FALLBACK_MODELS) add(m);
+  for (const m of DEFAULT_FALLBACK_MODELS) add(m); // always keep stable defaults as a last resort
+  return chain;
+}
+
+/** Pull a short, human-readable reason out of a (often JSON) Gemini error. */
+function cleanErrorMessage(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e ?? "unknown error");
+  const m = raw.match(/"message"\s*:\s*"([^"]+)"/);
+  return (m ? m[1] : raw).slice(0, 240);
+}
+
+/** Auth / API-key errors won't be fixed by switching models — stop immediately. */
+function isAuthError(e: unknown): boolean {
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return /\b401\b|\b403\b|api[_ ]?key|unauthenticated|permission denied|forbidden|api key not valid|invalid authentication/.test(
+    msg,
+  );
 }
 
 export type UserHealthContext = {
@@ -46,6 +75,8 @@ export type ParseLogInput = {
   user: UserHealthContext;
   /** When true, also parse menstrual-cycle mentions (opt-in feature). */
   cycleTracking?: boolean;
+  /** Extra models to try (in order) if the selected one is busy. Defaults used if omitted. */
+  fallbackModels?: string[];
 };
 
 const SYSTEM_INSTRUCTION = `You are a meticulous nutrition and health logging assistant.
@@ -175,38 +206,25 @@ function stripJsonFences(text: string): string {
   return (fenced ? fenced[1] : trimmed).trim();
 }
 
+type ParsePart = { text: string } | { inlineData: { mimeType: string; data: string } };
+
 /**
- * Send the recorded audio and/or typed text to Gemini and return a validated,
- * structured ParseResult. Throws on auth errors or unparseable output.
+ * Run ONE model: up to MAX_ATTEMPTS, re-asking with a corrective hint on invalid
+ * JSON. Propagates the raw generate error (503/auth/etc.) to the caller so it can
+ * decide whether to switch models; throws SchemaError if the model keeps
+ * returning output that fails validation.
  */
-export async function parseLogSession(
-  input: ParseLogInput,
+async function runModel(
+  ai: GenAiClient,
+  model: string,
+  systemInstruction: string,
+  baseParts: ParsePart[],
 ): Promise<ParseResult> {
-  const ai = getGeminiClient(input.apiKey);
-
-  const parts: Array<
-    { text: string } | { inlineData: { mimeType: string; data: string } }
-  > = [{ text: buildContextText(input) }];
-
-  if (input.audioBase64 && input.audioMime) {
-    parts.push({
-      inlineData: { mimeType: input.audioMime, data: input.audioBase64 },
-    });
-    parts.push({
-      text: "Transcribe the audio above and parse it together with the typed note.",
-    });
-  } else if (!input.typedText?.trim()) {
-    throw new Error("Nothing to parse: provide audio or text.");
-  }
-
-  // Try up to MAX_ATTEMPTS times. If the model returns invalid JSON or output that
-  // fails schema validation, re-ask once with a corrective hint before giving up —
-  // so a single malformed reply never crashes the capture.
   const MAX_ATTEMPTS = 2;
   let lastError = "";
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const attemptParts = [...parts];
+    const attemptParts = [...baseParts];
     if (attempt > 1 && lastError) {
       attemptParts.push({
         text:
@@ -216,15 +234,11 @@ export async function parseLogSession(
       });
     }
 
-    const response = await generateWithRetry(ai, {
-      model: input.model,
+    // Any generate error (503 overload, 429, 404 model-not-found, auth) propagates.
+    const response = await ai.models.generateContent({
+      model,
       contents: [{ role: "user", parts: attemptParts }],
-      config: {
-        systemInstruction:
-          SYSTEM_INSTRUCTION + (input.cycleTracking ? CYCLE_INSTRUCTION : NO_CYCLE_INSTRUCTION),
-        responseMimeType: "application/json",
-        temperature: 0,
-      },
+      config: { systemInstruction, responseMimeType: "application/json", temperature: 0 },
     });
 
     const text = response.text;
@@ -249,7 +263,50 @@ export async function parseLogSession(
       .join("; ");
   }
 
+  throw new SchemaError(`schema validation failed after ${MAX_ATTEMPTS} attempts: ${lastError}`);
+}
+
+/**
+ * Send the recorded audio and/or typed text to Gemini and return validated,
+ * structured output. Tries the selected model first; if it's overloaded (503),
+ * rate-limited, or unavailable, it automatically falls back through other
+ * flash / flash-lite models until one responds. Only an auth/key error stops it.
+ * Returns which model actually produced the result.
+ */
+export async function parseLogSession(
+  input: ParseLogInput,
+): Promise<{ result: ParseResult; modelUsed: string }> {
+  const ai = getGeminiClient(input.apiKey);
+
+  const parts: ParsePart[] = [{ text: buildContextText(input) }];
+  if (input.audioBase64 && input.audioMime) {
+    parts.push({ inlineData: { mimeType: input.audioMime, data: input.audioBase64 } });
+    parts.push({ text: "Transcribe the audio above and parse it together with the typed note." });
+  } else if (!input.typedText?.trim()) {
+    throw new Error("Nothing to parse: provide audio or text.");
+  }
+
+  const systemInstruction =
+    SYSTEM_INSTRUCTION + (input.cycleTracking ? CYCLE_INSTRUCTION : NO_CYCLE_INSTRUCTION);
+  const chain = buildModelChain(input.model, input.fallbackModels);
+
+  let lastError: unknown;
+  let lastModel = input.model;
+
+  for (const model of chain) {
+    try {
+      const result = await runModel(ai, model, systemInstruction, parts);
+      return { result, modelUsed: model };
+    } catch (e) {
+      lastError = e;
+      lastModel = model;
+      // A bad key/permission won't improve on another model — fail fast.
+      if (isAuthError(e)) throw e;
+      // Otherwise (503 overload, 429, 404, schema failure, transient) try the next.
+    }
+  }
+
   throw new Error(
-    `Gemini did not return valid structured data after ${MAX_ATTEMPTS} attempts: ${lastError}`,
+    `All models are busy or unavailable right now (last tried ${lastModel}): ${cleanErrorMessage(lastError)}`,
   );
 }
