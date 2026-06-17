@@ -4,8 +4,9 @@ import { useState } from "react";
 import { RotateCw } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-/** Manual data refresh. Spins while refreshing — either a manual tap or a
- * background refetch (pass `loading`). */
+/** Manual data refresh. Spins only while the user-initiated refresh is in flight
+ * — background (stale-while-revalidate) refetches stay silent so the UI doesn't
+ * change while data updates underneath. `loading` can force the spinner if needed. */
 export function RefreshButton({
   onRefresh,
   loading = false,

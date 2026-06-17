@@ -97,7 +97,6 @@ export default function TodayPage() {
           <div className="flex items-center gap-2">
             <RefreshButton
               light
-              loading={dayQ.isFetching}
               onRefresh={() => Promise.all([dayQ.refetch(), settingsQ.refetch()])}
             />
             <Bell size={18} className="text-white/85" />

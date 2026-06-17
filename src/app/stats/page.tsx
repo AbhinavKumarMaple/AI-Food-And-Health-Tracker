@@ -60,7 +60,7 @@ export default function StatsPage() {
         back={false}
         right={
           <div className="flex items-center gap-2">
-            <RefreshButton loading={corrQ.isFetching} onRefresh={() => corrQ.refetch()} />
+            <RefreshButton onRefresh={() => corrQ.refetch()} />
             <select
               value={range}
               onChange={(e) => setRange(Number(e.target.value))}

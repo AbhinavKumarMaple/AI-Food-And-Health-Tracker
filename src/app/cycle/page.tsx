@@ -230,7 +230,7 @@ export default function CyclePage() {
       <PageHeader
         title="Cycle"
         eyebrow="Your rhythm"
-        right={<RefreshButton loading={logsQ.isFetching} onRefresh={() => Promise.all([logsQ.refetch(), corrQ.refetch()])} />}
+        right={<RefreshButton onRefresh={() => Promise.all([logsQ.refetch(), corrQ.refetch()])} />}
       />
 
       <div className="flex flex-col gap-5 px-5 pb-10 pt-1">

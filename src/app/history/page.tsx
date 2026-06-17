@@ -67,7 +67,7 @@ export default function HistoryPage() {
         back={false}
         right={
           <div className="flex items-center gap-2">
-            <RefreshButton loading={sumQ.isFetching} onRefresh={() => sumQ.refetch()} />
+            <RefreshButton onRefresh={() => sumQ.refetch()} />
             <button className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface text-muted">
               <Search size={17} />
             </button>

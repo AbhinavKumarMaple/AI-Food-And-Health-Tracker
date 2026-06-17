@@ -131,7 +131,7 @@ export default function DayDetailPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <RefreshButton loading={dayQ.isFetching} onRefresh={() => dayQ.refetch()} />
+          <RefreshButton onRefresh={() => dayQ.refetch()} />
           <div className="relative">
             <button
               onClick={() => setMenuOpen((v) => !v)}
