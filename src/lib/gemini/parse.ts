@@ -7,17 +7,23 @@ type GenAiClient = ReturnType<typeof getGeminiClient>;
 class SchemaError extends Error {}
 
 /**
- * Stable, widely-available flash / flash-lite models to fall back to when the
- * selected model is overloaded (503 UNAVAILABLE), rate-limited, or unavailable.
- * Ordered lightest / most-available first so capture keeps working under load.
+ * Models to fall back through when the selected model is overloaded (503),
+ * rate-limited, or unavailable — tried in order, NEWEST FIRST ("from latest to
+ * lower"), exactly as specified. IDs verified against the live ListModels API.
+ * (gemini-2.5-flash-preview-tts is a speech model and will simply be skipped if
+ * it can't structure text — kept here per the requested list.)
  */
 const DEFAULT_FALLBACK_MODELS = [
-  "gemini-2.5-flash-lite",
-  "gemini-2.5-flash",
-  "gemini-2.0-flash-lite",
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite-001",
-  "gemini-2.0-flash-001",
+  "gemini-3.5-flash", // Gemini 3.5 Flash
+  "gemini-3.1-flash-lite", // Gemini 3.1 Flash Lite
+  "gemini-3-flash-preview", // Gemini 3 Flash Preview
+  "gemini-2.5-flash-lite", // Gemini 2.5 Flash-Lite
+  "gemini-2.5-flash-preview-tts", // Gemini 2.5 Flash Preview TTS
+  "gemini-2.5-flash", // Gemini 2.5 Flash
+  "gemini-2.0-flash-lite-001", // Gemini 2.0 Flash-Lite 001
+  "gemini-2.0-flash-lite", // Gemini 2.0 Flash-Lite
+  "gemini-2.0-flash-001", // Gemini 2.0 Flash 001
+  "gemini-2.0-flash", // Gemini 2.0 Flash
 ];
 
 /** Ordered, de-duplicated list of models to try: selected first, then fallbacks. */
@@ -42,6 +48,19 @@ function cleanErrorMessage(e: unknown): string {
   const raw = e instanceof Error ? e.message : String(e ?? "unknown error");
   const m = raw.match(/"message"\s*:\s*"([^"]+)"/);
   return (m ? m[1] : raw).slice(0, 240);
+}
+
+/** A 429 quota/rate-limit error — an account/plan limit, NOT a per-model "busy". */
+function isQuotaError(e: unknown): boolean {
+  const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return /\b429\b|resource_exhausted|exceeded your current quota|\bquota\b/.test(msg);
+}
+
+/** Seconds to wait, if the error suggests one ("retry in 19s" / retryDelay "19s"). */
+function retryAfterSeconds(e: unknown): number | null {
+  const raw = e instanceof Error ? e.message : String(e ?? "");
+  const m = raw.match(/retry in ([\d.]+)s/i) ?? raw.match(/"retryDelay"\s*:\s*"(\d+)s"/);
+  return m ? Math.ceil(Number(m[1])) : null;
 }
 
 /** Auth / API-key errors won't be fixed by switching models — stop immediately. */
@@ -235,11 +254,13 @@ async function runModel(
     }
 
     // Any generate error (503 overload, 429, 404 model-not-found, auth) propagates.
+    const callStart = Date.now();
     const response = await ai.models.generateContent({
       model,
       contents: [{ role: "user", parts: attemptParts }],
       config: { systemInstruction, responseMimeType: "application/json", temperature: 0 },
     });
+    console.log(`[parse]    ${model} attempt ${attempt} responded in ${Date.now() - callStart}ms`);
 
     const text = response.text;
     if (!text) {
@@ -290,23 +311,56 @@ export async function parseLogSession(
     SYSTEM_INSTRUCTION + (input.cycleTracking ? CYCLE_INSTRUCTION : NO_CYCLE_INSTRUCTION);
   const chain = buildModelChain(input.model, input.fallbackModels);
 
+  const chainStart = Date.now();
+  console.log(
+    `[parse] selected="${input.model}" — fallback chain (${chain.length}): ${chain.join(" → ")}`,
+  );
+
   let lastError: unknown;
   let lastModel = input.model;
 
-  for (const model of chain) {
+  for (let i = 0; i < chain.length; i++) {
+    const model = chain[i];
+    const t0 = Date.now();
+    console.log(`[parse] → [${i + 1}/${chain.length}] trying ${model}…`);
     try {
       const result = await runModel(ai, model, systemInstruction, parts);
+      console.log(
+        `[parse] ✓ ${model} succeeded in ${Date.now() - t0}ms (total ${Date.now() - chainStart}ms)`,
+      );
       return { result, modelUsed: model };
     } catch (e) {
       lastError = e;
       lastModel = model;
+      const ms = Date.now() - t0;
       // A bad key/permission won't improve on another model — fail fast.
-      if (isAuthError(e)) throw e;
+      if (isAuthError(e)) {
+        console.warn(`[parse] ✗ ${model} AUTH error in ${ms}ms — stopping: ${cleanErrorMessage(e)}`);
+        throw e;
+      }
       // Otherwise (503 overload, 429, 404, schema failure, transient) try the next.
+      const kind = isQuotaError(e) ? "QUOTA/429" : e instanceof SchemaError ? "BAD-SCHEMA" : "BUSY/UNAVAILABLE";
+      console.warn(
+        `[parse] ✗ ${model} ${kind} in ${ms}ms — trying next: ${cleanErrorMessage(e)}`,
+      );
     }
   }
 
+  console.error(
+    `[parse] ✗ ALL ${chain.length} models failed in ${Date.now() - chainStart}ms (last: ${lastModel})`,
+  );
+
+  // Every model failed. Quota (429) is an account/plan cap — switching models
+  // can't help — so say that plainly rather than implying it's transient load.
+  if (isQuotaError(lastError)) {
+    const wait = retryAfterSeconds(lastError);
+    throw new Error(
+      `Your Gemini API quota is used up on every model — this is an account/plan limit, so switching models can't help. ` +
+        (wait ? `Try again in ~${wait}s, ` : "Try again later, ") +
+        `or check your Gemini API plan & billing (or use a key with available quota).`,
+    );
+  }
   throw new Error(
-    `All models are busy or unavailable right now (last tried ${lastModel}): ${cleanErrorMessage(lastError)}`,
+    `All models are busy right now (last tried ${lastModel}). Please try again in a moment. (${cleanErrorMessage(lastError)})`,
   );
 }

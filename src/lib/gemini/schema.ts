@@ -32,12 +32,14 @@ export const parsedMealItemSchema = z.object({
 });
 
 export const parsedMealSchema = z.object({
-  mealType: z.string().default("other"),
-  title: z.string().min(1),
+  mealType: z.string().nullish(),
+  // Models occasionally return null/missing — normalized (derived from items/type) in draft.ts.
+  title: z.string().nullish(),
   description: z.string().nullish(),
   occurredAt: z.string().nullish(), // ISO 8601, resolved against provided "now"
   timeText: z.string().nullish(), // raw mention e.g. "around 8:30"
-  timeConfidence: z.enum(["exact", "approx", "inferred"]).default("inferred"),
+  // Accept any string; normalized to the enum in draft.ts (models send odd values).
+  timeConfidence: z.string().nullish(),
   location: z.string().nullish(),
   restaurantName: z.string().nullish(),
   socialContext: z.string().nullish(),
@@ -54,12 +56,12 @@ export const parsedMealSchema = z.object({
 });
 
 export const parsedSymptomSchema = z.object({
-  symptomType: z.string().default("other"),
-  title: z.string().min(1),
+  symptomType: z.string().nullish(),
+  title: z.string().nullish(),
   severity: looseNum,
   occurredAt: z.string().nullish(),
   timeText: z.string().nullish(),
-  timeConfidence: z.enum(["exact", "approx", "inferred"]).default("inferred"),
+  timeConfidence: z.string().nullish(),
   durationMinutes: looseNum,
   isOngoing: z.boolean().nullish(),
   bodyLocation: z.string().nullish(),

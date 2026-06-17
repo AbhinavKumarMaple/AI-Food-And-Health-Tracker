@@ -63,6 +63,15 @@ function roundOrNull(n: number | null | undefined): number | null {
   if (n == null || Number.isNaN(n)) return null;
   return Math.round(n);
 }
+function cap(s: string | null | undefined): string {
+  const v = (s ?? "").trim();
+  return v ? v[0].toUpperCase() + v.slice(1) : "";
+}
+/** Models sometimes send null / odd values; coerce to the allowed enum. */
+function normTimeConfidence(v: string | null | undefined): "exact" | "approx" | "inferred" {
+  const s = (v ?? "").toLowerCase().trim();
+  return s === "exact" || s === "approx" ? s : "inferred";
+}
 
 const FU_TYPES: FollowUpTargetType[] = ["meal", "symptom", "mood", "hydration", "day", "general"];
 function normTargetType(t: string): FollowUpTargetType {
@@ -103,9 +112,14 @@ export function draftsFromParseResult(result: ParseResult, sessionId: string): D
   const meals: NewMeal[] = result.meals.map((m) => ({
     logSessionId: sessionId,
     occurredAt: resolveIso(m.occurredAt, fallback),
-    timeConfidence: m.timeConfidence ?? "inferred",
-    mealType: m.mealType || "other",
-    title: m.title,
+    timeConfidence: normTimeConfidence(m.timeConfidence),
+    mealType: m.mealType?.trim() || "other",
+    // Title may be null/missing from the model — derive from items or meal type.
+    title:
+      m.title?.trim() ||
+      (m.items ?? [])[0]?.name?.trim() ||
+      (m.mealType && m.mealType !== "other" ? cap(m.mealType) : "") ||
+      "Meal",
     description: m.description ?? null,
     location: m.location ?? null,
     restaurantName: m.restaurantName ?? null,
@@ -136,9 +150,9 @@ export function draftsFromParseResult(result: ParseResult, sessionId: string): D
   const symptoms: NewSymptom[] = result.symptoms.map((s) => ({
     logSessionId: sessionId,
     occurredAt: resolveIso(s.occurredAt, fallback),
-    timeConfidence: s.timeConfidence ?? "inferred",
-    symptomType: s.symptomType || "other",
-    title: s.title,
+    timeConfidence: normTimeConfidence(s.timeConfidence),
+    symptomType: s.symptomType?.trim() || "other",
+    title: s.title?.trim() || (s.symptomType && s.symptomType !== "other" ? cap(s.symptomType) : "") || "Symptom",
     severity: rating1to5(s.severity, 3),
     durationMinutes: roundOrNull(s.durationMinutes),
     isOngoing: s.isOngoing ?? false,
