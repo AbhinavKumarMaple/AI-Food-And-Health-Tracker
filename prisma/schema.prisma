@@ -15,9 +15,11 @@ datasource db {
 
 enum ParseStatus {
   draft
+  processing
   parsed
   confirmed
   discarded
+  failed
 }
 
 enum EntrySource {

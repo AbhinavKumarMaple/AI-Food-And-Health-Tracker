@@ -10,7 +10,13 @@ export type ISODate = string; // e.g. "2026-06-09"
 
 export type EntrySource = "voice" | "text" | "manual";
 export type InputType = "voice" | "text" | "mixed";
-export type ParseStatus = "draft" | "parsed" | "confirmed" | "discarded";
+export type ParseStatus =
+  | "draft"
+  | "processing"
+  | "parsed"
+  | "confirmed"
+  | "discarded"
+  | "failed";
 export type TimeConfidence = "exact" | "approx" | "inferred";
 export type Units = "metric" | "imperial";
 export type FollowUpAggressiveness = "low" | "medium" | "high";

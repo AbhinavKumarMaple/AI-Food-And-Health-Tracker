@@ -12,6 +12,7 @@ import type {
   LogSession,
   Meal,
   Mood,
+  ParseStatus,
   Symptom,
   SymptomTrigger,
   CorrelationDataset,
@@ -84,6 +85,8 @@ export interface DataStore {
   createLogSession(input: NewLogSession): Promise<LogSession>;
   getLogSession(id: ID): Promise<LogSession | null>;
   updateLogSession(id: ID, patch: Partial<LogSession>): Promise<LogSession>;
+  /** List capture sessions (the "Inbox"), optionally filtered by status. */
+  listLogSessions(statuses?: ParseStatus[]): Promise<LogSession[]>;
 
   // meals
   addMeal(meal: NewMeal): Promise<Meal>;

@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { getAuth, getStore } from "@/lib/store";
-import type { ISODate } from "@/lib/store/types";
+import type { ISODate, LogSession, ParseStatus } from "@/lib/store/types";
 import type { GeminiModel } from "@/lib/gemini/models";
 
 /** localStorage key the query cache is persisted under. */
@@ -24,7 +24,11 @@ export const qk = {
   correlation: ["correlationDataset"] as const,
   cycleLogs: ["cycleLogs"] as const,
   dayContext: (date: ISODate) => ["dayContext", date] as const,
+  logSessions: ["logSessions"] as const,
 };
+
+/** Statuses that belong in the Inbox (still in flight or awaiting review). */
+export const INBOX_STATUSES: ParseStatus[] = ["processing", "parsed", "failed"];
 
 export function useCurrentUser() {
   return useQuery({
@@ -121,6 +125,27 @@ export async function ensureDayContext(client: QueryClient, date?: ISODate): Pro
   } catch {
     // best-effort; env context is non-critical
   }
+}
+
+/**
+ * The Inbox: capture jobs that are processing / ready to review / failed. Polls
+ * every 2.5s ONLY while something is still processing, then stops.
+ */
+export function useLogSessions(enabled = true) {
+  return useQuery({
+    queryKey: qk.logSessions,
+    queryFn: () => getStore().listLogSessions(INBOX_STATUSES),
+    enabled,
+    staleTime: 0, // status changes matter — always revalidate (cached data still shows instantly)
+    refetchInterval: (query) => {
+      const data = query.state.data as LogSession[] | undefined;
+      return data?.some((s) => s.parseStatus === "processing") ? 2500 : false;
+    },
+  });
+}
+
+export function invalidateLogSessions(client: QueryClient) {
+  client.invalidateQueries({ queryKey: qk.logSessions });
 }
 
 /** Invalidate everything that depends on logged entries (after add/edit/delete). */

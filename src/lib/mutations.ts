@@ -7,13 +7,16 @@ import { qk, invalidateEntries } from "@/lib/queries";
 import type { Drafts } from "@/lib/draft";
 import type {
   DayDetail,
+  DaySummary,
   HydrationLog,
   ISODate,
+  LogSession,
   Meal,
   Mood,
   Symptom,
 } from "@/lib/store/types";
 import { newId, nowIso } from "@/lib/store/util";
+import { moodLabel } from "@/lib/format";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -68,6 +71,85 @@ export function deleteEntryOptimistic(
     } catch {
       if (prev) queryClient.setQueryData(key, prev); // rollback
       toast.error("Couldn't delete that — it's back in your log.");
+    }
+  })();
+}
+
+/**
+ * Discard a capture WITHOUT waiting: drop it from the Inbox cache immediately,
+ * then mark it discarded on the server in the background (with retries). If it
+ * fails, it reappears and a toast is shown.
+ */
+export function discardSessionOptimistic(queryClient: QueryClient, id: string): void {
+  queryClient.setQueryData<LogSession[]>(qk.logSessions, (old) =>
+    old ? old.filter((s) => s.id !== id) : old,
+  );
+  void (async () => {
+    try {
+      await withRetry(() => getStore().updateLogSession(id, { parseStatus: "discarded" }));
+      queryClient.invalidateQueries({ queryKey: qk.logSessions });
+    } catch {
+      queryClient.invalidateQueries({ queryKey: qk.logSessions }); // it'll come back
+      toast.error("Couldn't discard that — it's back in your Inbox.");
+    }
+  })();
+}
+
+/**
+ * Rate a day WITHOUT waiting: reflect the new rating in the day cache instantly,
+ * then persist (which computes the true time-weighted average) in the background
+ * and reconcile. Rolls back + toasts on failure.
+ */
+export function recordDayRatingOptimistic(
+  queryClient: QueryClient,
+  date: ISODate,
+  rating: number,
+): void {
+  const key = qk.day(date);
+  const prev = queryClient.getQueryData<DayDetail>(key);
+  const now = nowIso();
+
+  queryClient.setQueryData<DayDetail>(key, (old) => {
+    if (!old) return old;
+    const samples = [...(old.summary?.ratingSamples ?? []), { rating, at: now }];
+    const summary: DaySummary = old.summary
+      ? {
+          ...old.summary,
+          ratingSamples: samples,
+          overallRating: rating,
+          ratingLabel: moodLabel(rating),
+          ratingCapturedAt: now,
+          updatedAt: now,
+        }
+      : {
+          id: `temp-${date}`,
+          userId: "",
+          date,
+          overallRating: rating,
+          ratingLabel: moodLabel(rating),
+          ratingCapturedAt: now,
+          ratingSamples: samples,
+          isClosed: false,
+          reflection: null,
+          aiSummary: null,
+          mealCount: old.meals.length,
+          symptomCount: old.symptoms.length,
+          moodAvg: null,
+          totalWaterMl: old.hydration.reduce((s, h) => s + (h.amountMl || 0), 0),
+          createdAt: now,
+          updatedAt: now,
+        };
+    return { ...old, summary };
+  });
+
+  void (async () => {
+    try {
+      await withRetry(() => getStore().recordDayRating(date, rating));
+      queryClient.invalidateQueries({ queryKey: key }); // reconcile with true weighted avg
+      queryClient.invalidateQueries({ queryKey: qk.daySummaries });
+    } catch {
+      queryClient.setQueryData(key, prev); // rollback
+      toast.error("Couldn't save your rating. Tap to try again.");
     }
   })();
 }
@@ -180,6 +262,7 @@ export function saveLogOptimistic(args: {
         }),
       );
       invalidateEntries(queryClient);
+      queryClient.invalidateQueries({ queryKey: qk.logSessions }); // drop from Inbox
     } catch {
       toast.error("Some entries didn't save. Open the day and tap refresh to check.");
       invalidateEntries(queryClient);

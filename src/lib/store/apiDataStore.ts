@@ -24,6 +24,7 @@ import type {
   LogSession,
   Meal,
   Mood,
+  ParseStatus,
   Symptom,
   SymptomTrigger,
   User,
@@ -64,6 +65,9 @@ export class ApiDataStore implements DataStore {
   }
   updateLogSession(id: ID, patch: Partial<LogSession>) {
     return rpc<LogSession>("updateLogSession", [id, patch]);
+  }
+  listLogSessions(statuses?: ParseStatus[]) {
+    return rpc<LogSession[]>("listLogSessions", [statuses]);
   }
 
   addMeal(meal: NewMeal) {

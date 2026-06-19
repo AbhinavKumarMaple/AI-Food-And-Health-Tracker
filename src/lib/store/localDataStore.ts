@@ -32,6 +32,7 @@ import type {
   LogSession,
   Meal,
   Mood,
+  ParseStatus,
   Symptom,
   SymptomTrigger,
   User,
@@ -142,6 +143,11 @@ export class LocalDataStore implements DataStore {
     sessions[idx] = { ...sessions[idx], ...patch, id, userId: this.uid() };
     this.write("sessions", sessions);
     return sessions[idx];
+  }
+  async listLogSessions(statuses?: ParseStatus[]): Promise<LogSession[]> {
+    return this.read<LogSession[]>("sessions", [])
+      .filter((s) => !statuses?.length || statuses.includes(s.parseStatus))
+      .sort((a, b) => compareDesc(a.createdAt, b.createdAt));
   }
 
   // ---- meals -----------------------------------------------------------------

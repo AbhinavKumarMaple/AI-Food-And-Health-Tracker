@@ -437,6 +437,19 @@ export class PrismaDataStore implements DataStore {
     });
     return this.logSessionToDomain(row as Row);
   }
+  async listLogSessions(
+    statuses?: import("@/lib/store/types").ParseStatus[],
+  ): Promise<import("@/lib/store/types").LogSession[]> {
+    const where: Record<string, unknown> = { userId: this.userId };
+    if (statuses && statuses.length) where.parseStatus = { in: statuses };
+    const rows = await prisma.logSession.findMany({
+      where: where as Prisma.LogSessionWhereInput,
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+    return rows.map((r) => this.logSessionToDomain(r as Row));
+  }
+
   private logSessionToDomain(r: Row): import("@/lib/store/types").LogSession {
     return {
       id: r.id as string,

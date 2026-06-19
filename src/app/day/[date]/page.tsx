@@ -6,7 +6,7 @@ import { ChevronLeft, MoreHorizontal, Utensils, Activity, Droplets, CheckCircle2
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import { useDay, useSettings, useDayContext, useQueryClient, invalidateEntries, ensureDayContext } from "@/lib/queries";
-import { deleteEntryOptimistic } from "@/lib/mutations";
+import { deleteEntryOptimistic, recordDayRatingOptimistic } from "@/lib/mutations";
 import { formatLitres, formatTime, moodLabel } from "@/lib/format";
 import { Screen } from "@/components/Screen";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -77,9 +77,9 @@ export default function DayDetailPage() {
     return items.sort((a, b) => new Date(a.data.occurredAt).getTime() - new Date(b.data.occurredAt).getTime());
   }, [day]);
 
-  async function setRating(rating: number) {
-    await getStore().recordDayRating(date, rating);
-    invalidateEntries(queryClient);
+  function setRating(rating: number) {
+    // Optimistic: stars fill instantly; the true weighted average reconciles after.
+    recordDayRatingOptimistic(queryClient, date, rating);
   }
 
   async function runDelete() {

@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, Pause, Play, Check, Square, Info, Loader2 } from "lucide-react";
-import { toast } from "sonner";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
+import { useQueryClient, invalidateLogSessions } from "@/lib/queries";
 import { useRecorder, formatElapsed, blobToBase64 } from "@/lib/useRecorder";
 import { SayGuideSheet } from "@/components/SayGuideSheet";
 import type { User } from "@/lib/store/types";
@@ -38,13 +38,46 @@ function speechLangFor(languages?: string[]): string {
 export default function RecordPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const queryClient = useQueryClient();
   const rec = useRecorder();
   const [note, setNote] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const started = useRef(false);
   const profileRef = useRef<User | null>(null);
+
+  // Once submitted, poll the job; open review the moment it's ready.
+  useEffect(() => {
+    if (!jobId) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const s = await getStore().getLogSession(jobId);
+        if (!active) return;
+        if (s?.parseStatus === "parsed") {
+          router.replace(`/review/${jobId}`);
+          return;
+        }
+        if (s?.parseStatus === "failed") {
+          setError(s.error || "We couldn't organize that — please try again.");
+          setProcessing(false);
+          setJobId(null);
+          return;
+        }
+      } catch {
+        // keep polling
+      }
+      if (active) timer = setTimeout(poll, 2000);
+    };
+    timer = setTimeout(poll, 1200);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [jobId, router]);
 
   useEffect(() => {
     if (!user || started.current) return;
@@ -68,7 +101,6 @@ export default function RecordPage() {
     const result = await rec.stop();
     const store = getStore();
     const settings = await store.getSettings();
-    const profile = profileRef.current ?? (await store.getProfile());
 
     if (!settings.geminiApiKey) {
       setError("Add your Gemini API key in Settings to process recordings.");
@@ -83,46 +115,23 @@ export default function RecordPage() {
 
     try {
       const audioBase64 = result ? await blobToBase64(result.blob) : null;
-      const res = await fetch("/api/gemini/parse", {
+      // Submit for BACKGROUND processing — returns immediately with a job id.
+      const res = await fetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          apiKey: settings.geminiApiKey,
-          model: settings.selectedModel,
           audioBase64,
           audioMime: result?.blob.type ?? null,
           typedText: note.trim() || null,
-          cycleTracking: settings.cycleTrackingEnabled,
-          user: {
-            timezone: profile.timezone,
-            knownAllergies: profile.knownAllergies,
-            intolerances: profile.intolerances,
-            chronicConditions: profile.chronicConditions,
-            dietaryPattern: profile.dietaryPattern,
-            location: profile.location,
-            languages: profile.languages,
-          },
+          transcript: result?.transcript ?? rec.transcript ?? null,
+          audioDurationSeconds: Math.round(rec.elapsedMs / 1000),
+          inputType: audioBase64 ? (note.trim() ? "mixed" : "voice") : "text",
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not process recording");
-
-      // If the selected model was busy and we fell back to another, let the user know.
-      const modelUsed: string | undefined = data.modelUsed;
-      if (modelUsed && modelUsed !== settings.selectedModel) {
-        toast.info(`${settings.selectedModel} was busy — used ${modelUsed} instead.`);
-      }
-
-      const session = await store.createLogSession({
-        inputType: audioBase64 ? (note.trim() ? "mixed" : "voice") : "text",
-        audioDurationSeconds: Math.round(rec.elapsedMs / 1000),
-        transcript: data.transcript ?? result?.transcript ?? null,
-        typedTextBefore: note.trim() || null,
-        geminiModelUsed: modelUsed ?? settings.selectedModel,
-        rawAiResponse: data,
-        parseStatus: "parsed",
-      });
-      router.replace(`/review/${session.id}`);
+      if (!res.ok) throw new Error(data.error || "Could not submit recording");
+      invalidateLogSessions(queryClient); // show it in the Inbox / Today card
+      setJobId(data.jobId); // enter the "organizing…" wait state
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
       setProcessing(false);
@@ -225,10 +234,25 @@ export default function RecordPage() {
         </button>
       </div>
 
-      {processing && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#1a1a1a]/80 backdrop-blur">
+      {(processing || jobId) && (
+        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#1a1a1a]/85 px-8 text-center backdrop-blur">
           <Loader2 size={34} className="animate-spin text-primary" />
-          <p className="text-[14px] text-white/80">Organising what you said…</p>
+          {jobId ? (
+            <>
+              <p className="text-[15px] font-semibold text-white">Organizing your log…</p>
+              <p className="max-w-[15rem] text-[13px] leading-snug text-white/70">
+                Wait here and we&apos;ll open it to review — or close, and it&apos;ll be ready in your Inbox.
+              </p>
+              <button
+                onClick={() => router.replace("/")}
+                className="mt-2 rounded-full border border-white/30 px-6 py-2 text-[14px] font-semibold text-white active:scale-95"
+              >
+                Close
+              </button>
+            </>
+          ) : (
+            <p className="text-[14px] text-white/80">Submitting…</p>
+          )}
         </div>
       )}
 

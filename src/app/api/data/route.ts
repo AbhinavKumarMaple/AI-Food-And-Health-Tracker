@@ -13,6 +13,7 @@ const ALLOWED = new Set<string>([
   "createLogSession",
   "getLogSession",
   "updateLogSession",
+  "listLogSessions",
   "addMeal",
   "updateMeal",
   "deleteMeal",

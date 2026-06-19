@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Sparkles, Trash2, Check, Pencil, ChevronLeft, MessageCircleQuestion, Droplet } from "lucide-react";
+import { Sparkles, Trash2, Check, Pencil, ChevronLeft, MessageCircleQuestion, Droplet, Loader2, AlertTriangle } from "lucide-react";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
 import { useQueryClient } from "@/lib/queries";
-import { saveLogOptimistic } from "@/lib/mutations";
+import { saveLogOptimistic, discardSessionOptimistic } from "@/lib/mutations";
 import { parseResultSchema } from "@/lib/gemini/schema";
 import { draftsFromParseResult, type Drafts } from "@/lib/draft";
 import { nowIso, toISODate } from "@/lib/store/util";
@@ -34,24 +34,47 @@ export default function ReviewPage() {
   const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<Drafts | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [notFound, setNotFound] = useState(false);
+  const [status, setStatus] = useState<"loading" | "processing" | "ready" | "failed" | "notfound">(
+    "loading",
+  );
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    getStore()
-      .getLogSession(id)
-      .then((session) => {
-        if (!session?.rawAiResponse) {
-          setNotFound(true);
-          return;
-        }
-        const parsed = parseResultSchema.safeParse(session.rawAiResponse);
-        if (!parsed.success) {
-          setNotFound(true);
-          return;
-        }
-        setDrafts(draftsFromParseResult(parsed.data, id));
-      });
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const load = async () => {
+      const session = await getStore().getLogSession(id);
+      if (!active) return;
+      if (!session) {
+        setStatus("notfound");
+        return;
+      }
+      if (session.parseStatus === "processing") {
+        setStatus("processing");
+        timer = setTimeout(load, 2000); // keep waiting; this job is still organizing
+        return;
+      }
+      if (session.parseStatus === "failed") {
+        setErrorMsg(session.error || "We couldn't organize this log.");
+        setStatus("failed");
+        return;
+      }
+      const parsed = session.rawAiResponse
+        ? parseResultSchema.safeParse(session.rawAiResponse)
+        : null;
+      if (!parsed?.success) {
+        setStatus("notfound");
+        return;
+      }
+      setDrafts(draftsFromParseResult(parsed.data, id));
+      setStatus("ready");
+    };
+    load();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
   }, [user, id]);
 
   const counts = useMemo(() => {
@@ -82,8 +105,9 @@ export default function ReviewPage() {
     );
   }
 
-  async function discard() {
-    await getStore().updateLogSession(id, { parseStatus: "discarded" });
+  function discard() {
+    // Optimistic: drop from the Inbox + leave immediately; persist in background.
+    discardSessionOptimistic(queryClient, id);
     router.replace("/");
   }
 
@@ -102,13 +126,45 @@ export default function ReviewPage() {
   }
 
   if (loading || !user) return null;
-  if (notFound)
+  if (status === "notfound")
     return (
       <Screen showTab={false}>
         <div className="flex flex-col items-center gap-3 p-10 text-center">
           <p className="text-sm text-muted">This review could not be found.</p>
           <button onClick={() => router.replace("/")} className="font-semibold text-primary-press">
             Back to Today
+          </button>
+        </div>
+      </Screen>
+    );
+  if (status === "processing")
+    return (
+      <Screen showTab={false}>
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
+          <Loader2 size={34} className="animate-spin text-primary" />
+          <p className="text-[15px] font-semibold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+            Organizing your log…
+          </p>
+          <p className="max-w-[16rem] text-[13px] text-muted">
+            This opens automatically when it&apos;s ready. You can leave — it&apos;ll wait in your Inbox.
+          </p>
+          <button onClick={() => router.replace("/inbox")} className="mt-1 font-semibold text-primary-press">
+            Go to Inbox
+          </button>
+        </div>
+      </Screen>
+    );
+  if (status === "failed")
+    return (
+      <Screen showTab={false}>
+        <div className="flex h-full flex-col items-center justify-center gap-3 p-10 text-center">
+          <AlertTriangle size={30} className="text-danger" />
+          <p className="text-[15px] font-semibold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+            Couldn&apos;t organize this log
+          </p>
+          <p className="max-w-[18rem] text-[12.5px] leading-snug text-muted">{errorMsg}</p>
+          <button onClick={() => router.replace("/record")} className="mt-1 font-semibold text-primary-press">
+            Record again
           </button>
         </div>
       </Screen>

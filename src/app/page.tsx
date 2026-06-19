@@ -3,10 +3,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles, Bell, Info, Droplet } from "lucide-react";
+import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles, Bell, Info, Droplet, Loader2, Inbox as InboxIcon } from "lucide-react";
 import { todayISODate } from "@/lib/store/util";
 import { useAuth } from "@/lib/useAuth";
-import { useDay, useSettings, useCycleLogs, useQueryClient, invalidateEntries } from "@/lib/queries";
+import { useDay, useSettings, useCycleLogs, useLogSessions, useQueryClient, invalidateEntries } from "@/lib/queries";
 import { buildPhaseResolver } from "@/lib/cycle/engine";
 import { PHASE_META, predictionLine } from "@/lib/cycle/present";
 import { seedDemoData } from "@/lib/seed";
@@ -36,8 +36,13 @@ export default function TodayPage() {
   const settingsQ = useSettings(!!user);
   const cycleEnabled = settingsQ.data?.cycleTrackingEnabled ?? false;
   const cycleQ = useCycleLogs(!!user && cycleEnabled);
+  const inboxQ = useLogSessions(!!user);
   const [showGuide, setShowGuide] = useState(false);
   const [seeding, setSeeding] = useState(false);
+
+  const inbox = inboxQ.data ?? [];
+  const readyCount = inbox.filter((s) => s.parseStatus === "parsed").length;
+  const processingCount = inbox.filter((s) => s.parseStatus === "processing").length;
 
   const day = dayQ.data;
   const settings = settingsQ.data;
@@ -147,6 +152,31 @@ export default function TodayPage() {
           <Link href="/settings" className="flex items-center gap-2 rounded-2xl bg-primary-tint px-4 py-3 text-[12px] font-medium text-primary-press">
             <Sparkles size={15} /> Add your Gemini API key in Settings to enable voice logging
             <ChevronRight size={15} className="ml-auto" />
+          </Link>
+        )}
+
+        {/* Inbox — pending background captures */}
+        {readyCount + processingCount > 0 && (
+          <Link
+            href="/inbox"
+            className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-tint text-primary">
+              {readyCount > 0 ? <InboxIcon size={18} /> : <Loader2 size={18} className="animate-spin" />}
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="text-[13px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+                {readyCount > 0
+                  ? `${readyCount} log${readyCount === 1 ? "" : "s"} ready to review`
+                  : `${processingCount} log${processingCount === 1 ? "" : "s"} organizing…`}
+              </span>
+              <span className="truncate text-[12px] text-muted">
+                {readyCount > 0 && processingCount > 0
+                  ? `${processingCount} still organizing`
+                  : "Tap to open your Inbox"}
+              </span>
+            </div>
+            <ChevronRight size={18} className="text-faint" />
           </Link>
         )}
 
