@@ -1,0 +1,33 @@
+
+> avni@0.1.0 start
+> next start -p 3002
+
+▲ Next.js 16.2.7
+- Local:         http://localhost:3002
+- Network:       http://192.168.1.4:3002
+✓ Ready in 300ms
+prisma:error 
+Invalid `prisma.userSettings.upsert()` invocation:
+
+
+Can't reach database server at `aws-1-ap-southeast-2.pooler.supabase.com:6543`
+
+Please make sure your database server is running at `aws-1-ap-southeast-2.pooler.supabase.com:6543`.
+⨯ Error [PrismaClientInitializationError]: 
+Invalid `prisma.userSettings.upsert()` invocation:
+
+
+Can't reach database server at `aws-1-ap-southeast-2.pooler.supabase.com:6543`
+
+Please make sure your database server is running at `aws-1-ap-southeast-2.pooler.supabase.com:6543`.
+    at async Object.getSettings (C:\Users\hp\Documents\avni\.next\server\chunks\[root-of-the-server]__0a0-dpp._.js:1:6786)
+    at async E (C:\Users\hp\Documents\avni\.next\server\chunks\[root-of-the-server]__1o_ula1._.js:1:3388)
+    at async l (C:\Users\hp\Documents\avni\.next\server\chunks\[root-of-the-server]__1o_ula1._.js:1:7871) {
+  clientVersion: '6.19.3',
+  errorCode: undefined,
+  retryable: undefined
+}
+[parse] selected="gemini-2.5-flash-lite" — fallback chain (10): gemini-2.5-flash-lite → gemini-3.5-flash → gemini-3.1-flash-lite → gemini-3-flash-preview → gemini-2.5-flash-preview-tts → gemini-2.5-flash → gemini-2.0-flash-lite-001 → gemini-2.0-flash-lite → gemini-2.0-flash-001 → gemini-2.0-flash
+[parse] → [1/10] trying gemini-2.5-flash-lite…
+[parse]    gemini-2.5-flash-lite attempt 1 responded in 10161ms
+[parse] ✓ gemini-2.5-flash-lite succeeded in 10167ms (total 10168ms)

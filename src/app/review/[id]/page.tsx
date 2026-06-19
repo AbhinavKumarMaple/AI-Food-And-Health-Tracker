@@ -178,6 +178,7 @@ export default function ReviewPage() {
 
   return (
     <Screen showTab={false}>
+      <div className="flex min-h-full flex-col">
       <div className="flex items-center justify-between px-5 pb-1 pt-3">
         <button onClick={() => router.back()} className="flex h-9 w-9 items-center justify-center rounded-full border border-line bg-surface">
           <ChevronLeft size={20} />
@@ -188,7 +189,7 @@ export default function ReviewPage() {
         <span className="h-9 w-9" />
       </div>
 
-      <div className="flex flex-col gap-5 px-5 pb-32 pt-1">
+      <div className="flex flex-1 flex-col gap-5 px-5 pb-6 pt-1">
         <GradientPanel variant="dark" className="p-5">
           <span className="flex items-center gap-1.5 text-[10px] font-bold tracking-wide text-white/70" style={{ fontFamily: "var(--font-label)" }}>
             <Sparkles size={12} /> AI ORGANIZED
@@ -410,6 +411,7 @@ export default function ReviewPage() {
         <PrimaryButton icon={Check} onClick={save} className="flex-[2]">
           Save to today
         </PrimaryButton>
+      </div>
       </div>
     </Screen>
   );
