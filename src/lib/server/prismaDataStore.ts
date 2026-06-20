@@ -465,6 +465,7 @@ export class PrismaDataStore implements DataStore {
       entryCount: r.entryCount as number,
       error: (r.error as string) ?? null,
       createdAt: (r.createdAt as Date).toISOString(),
+      updatedAt: (r.updatedAt as Date).toISOString(),
       confirmedAt: iso((r.confirmedAt as Date) ?? null),
     };
   }

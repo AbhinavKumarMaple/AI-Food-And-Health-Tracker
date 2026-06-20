@@ -24,9 +24,10 @@ function ago(iso: string): string {
   if (h < 24) return `${h}h ago`;
   return `${Math.round(h / 24)}d ago`;
 }
-/** A job that's been "processing" too long has likely been cut off server-side. */
+/** A job that's been "processing" too long (since its last update) has likely
+ *  been cut off server-side. Uses updatedAt so a fresh retry isn't "stuck". */
 function isStuck(s: LogSession): boolean {
-  return s.parseStatus === "processing" && Date.now() - new Date(s.createdAt).getTime() > 2 * 60_000;
+  return s.parseStatus === "processing" && Date.now() - new Date(s.updatedAt).getTime() > 2 * 60_000;
 }
 
 export default function InboxPage() {

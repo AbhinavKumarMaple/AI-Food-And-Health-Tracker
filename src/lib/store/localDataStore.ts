@@ -127,6 +127,7 @@ export class LocalDataStore implements DataStore {
       entryCount: 0,
       error: null,
       createdAt: nowIso(),
+      updatedAt: nowIso(),
       confirmedAt: null,
     };
     sessions.unshift(session);
@@ -140,7 +141,7 @@ export class LocalDataStore implements DataStore {
     const sessions = this.read<LogSession[]>("sessions", []);
     const idx = sessions.findIndex((s) => s.id === id);
     if (idx === -1) throw new Error("Log session not found");
-    sessions[idx] = { ...sessions[idx], ...patch, id, userId: this.uid() };
+    sessions[idx] = { ...sessions[idx], ...patch, id, userId: this.uid(), updatedAt: nowIso() };
     this.write("sessions", sessions);
     return sessions[idx];
   }

@@ -348,6 +348,7 @@ export interface LogSession {
   entryCount: number;
   error?: string | null;
   createdAt: ISODateTime;
+  updatedAt: ISODateTime;
   confirmedAt?: ISODateTime | null;
 }
 

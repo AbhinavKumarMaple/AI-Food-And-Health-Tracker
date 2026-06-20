@@ -101,9 +101,15 @@ export function discardSessionOptimistic(queryClient: QueryClient, id: string): 
  * text. Reverts + toasts on error (e.g. nothing to retry from).
  */
 export function retrySessionOptimistic(queryClient: QueryClient, id: string): void {
+  const now = nowIso();
+  // Flip to processing AND bump updatedAt so it reads as "Organizing…" (fresh),
+  // not "stuck" — even though the job itself was created a while ago.
   queryClient.setQueryData<LogSession[]>(qk.logSessions, (old) =>
-    old?.map((s) => (s.id === id ? { ...s, parseStatus: "processing", error: null } : s)),
+    old?.map((s) =>
+      s.id === id ? { ...s, parseStatus: "processing", error: null, updatedAt: now } : s,
+    ),
   );
+  toast.info("Retrying…");
   void (async () => {
     try {
       const res = await fetch("/api/jobs", {

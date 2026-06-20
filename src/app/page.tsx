@@ -6,10 +6,9 @@ import { useRouter } from "next/navigation";
 import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles, Bell, Info, Droplet, Loader2, Inbox as InboxIcon } from "lucide-react";
 import { todayISODate } from "@/lib/store/util";
 import { useAuth } from "@/lib/useAuth";
-import { useDay, useSettings, useCycleLogs, useLogSessions, useQueryClient, invalidateEntries } from "@/lib/queries";
+import { useDay, useSettings, useCycleLogs, useLogSessions } from "@/lib/queries";
 import { buildPhaseResolver } from "@/lib/cycle/engine";
 import { PHASE_META, predictionLine } from "@/lib/cycle/present";
-import { seedDemoData } from "@/lib/seed";
 import { formatLitres } from "@/lib/format";
 import { Screen } from "@/components/Screen";
 import { GradientPanel } from "@/components/GradientPanel";
@@ -29,7 +28,6 @@ function greeting(): string {
 
 export default function TodayPage() {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { user, loading } = useAuth();
   const today = todayISODate();
   const dayQ = useDay(today, !!user);
@@ -38,7 +36,6 @@ export default function TodayPage() {
   const cycleQ = useCycleLogs(!!user && cycleEnabled);
   const inboxQ = useLogSessions(!!user);
   const [showGuide, setShowGuide] = useState(false);
-  const [seeding, setSeeding] = useState(false);
 
   const inbox = inboxQ.data ?? [];
   const readyCount = inbox.filter((s) => s.parseStatus === "parsed").length;
@@ -68,13 +65,6 @@ export default function TodayPage() {
       (a, b) => new Date(b.data.occurredAt).getTime() - new Date(a.data.occurredAt).getTime(),
     );
   }, [day]);
-
-  async function loadSample() {
-    setSeeding(true);
-    await seedDemoData();
-    invalidateEntries(queryClient);
-    setSeeding(false);
-  }
 
   // Only a true first load (session not yet known) shows the full skeleton.
   if (loading || !user) {
@@ -234,15 +224,8 @@ export default function TodayPage() {
           ) : activities.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-surface/60 px-6 py-10 text-center">
               <p className="text-[13px] text-muted">No entries yet today.</p>
-              <button
-                onClick={loadSample}
-                disabled={seeding}
-                className="rounded-full bg-primary px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
-              >
-                {seeding ? "Loading…" : "Load sample data"}
-              </button>
-              <Link href="/record" className="text-[13px] font-semibold text-primary-press">
-                or record your first log →
+              <Link href="/record" className="rounded-full bg-primary px-5 py-2.5 text-[13px] font-semibold text-white">
+                Record your first log →
               </Link>
             </div>
           ) : (

@@ -155,6 +155,7 @@ model LogSession {
   error                String?
 
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
   confirmedAt DateTime?
 
   @@index([userId, createdAt])
