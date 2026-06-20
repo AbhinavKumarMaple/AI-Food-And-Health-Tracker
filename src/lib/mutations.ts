@@ -96,6 +96,32 @@ export function discardSessionOptimistic(queryClient: QueryClient, id: string): 
 }
 
 /**
+ * Retry a failed / stuck capture: flip it back to "processing" instantly (so the
+ * spinner shows and polling resumes), then ask the server to re-parse the stored
+ * text. Reverts + toasts on error (e.g. nothing to retry from).
+ */
+export function retrySessionOptimistic(queryClient: QueryClient, id: string): void {
+  queryClient.setQueryData<LogSession[]>(qk.logSessions, (old) =>
+    old?.map((s) => (s.id === id ? { ...s, parseStatus: "processing", error: null } : s)),
+  );
+  void (async () => {
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ retryId: id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Retry failed");
+      queryClient.invalidateQueries({ queryKey: qk.logSessions });
+    } catch (e) {
+      queryClient.invalidateQueries({ queryKey: qk.logSessions });
+      toast.error(e instanceof Error ? e.message : "Couldn't retry that.");
+    }
+  })();
+}
+
+/**
  * Rate a day WITHOUT waiting: reflect the new rating in the day cache instantly,
  * then persist (which computes the true time-weighted average) in the background
  * and reconcile. Rolls back + toasts on failure.

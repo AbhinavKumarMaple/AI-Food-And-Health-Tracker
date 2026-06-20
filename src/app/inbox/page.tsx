@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Loader2, Sparkles, AlertTriangle, ChevronRight, Trash2, Inbox as InboxIcon } from "lucide-react";
+import { Loader2, Sparkles, AlertTriangle, ChevronRight, Trash2, RotateCw, Inbox as InboxIcon } from "lucide-react";
 import type { LogSession } from "@/lib/store/types";
 import { useAuth } from "@/lib/useAuth";
 import { useLogSessions, useQueryClient } from "@/lib/queries";
-import { discardSessionOptimistic } from "@/lib/mutations";
+import { discardSessionOptimistic, retrySessionOptimistic } from "@/lib/mutations";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -38,6 +38,9 @@ export default function InboxPage() {
 
   function dismiss(id: string) {
     discardSessionOptimistic(queryClient, id);
+  }
+  function retry(id: string) {
+    retrySessionOptimistic(queryClient, id);
   }
 
   return (
@@ -95,16 +98,30 @@ export default function InboxPage() {
                   {ready ? (
                     <ChevronRight size={18} className="shrink-0 text-faint" />
                   ) : (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        dismiss(s.id);
-                      }}
-                      aria-label="Dismiss"
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-faint transition hover:bg-danger-tint hover:text-danger active:scale-95"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {failed && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            retry(s.id);
+                          }}
+                          aria-label="Retry"
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-primary transition hover:bg-primary-tint active:scale-95"
+                        >
+                          <RotateCw size={15} />
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dismiss(s.id);
+                        }}
+                        aria-label="Dismiss"
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-faint transition hover:bg-danger-tint hover:text-danger active:scale-95"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   )}
                 </div>
               </Card>

@@ -431,7 +431,7 @@ export class PrismaDataStore implements DataStore {
         rawAiResponse: patch.rawAiResponse !== undefined ? J(patch.rawAiResponse) : undefined,
         parseStatus: patch.parseStatus ?? undefined,
         entryCount: patch.entryCount ?? undefined,
-        error: patch.error ?? undefined,
+        error: "error" in patch ? patch.error : undefined, // allow clearing to null on retry success
         confirmedAt: patch.confirmedAt ? new Date(patch.confirmedAt) : undefined,
       },
     });
