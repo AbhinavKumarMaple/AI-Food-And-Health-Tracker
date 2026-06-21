@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles, Bell, Info, Droplet, Loader2, Inbox as InboxIcon } from "lucide-react";
+import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles, Bell, Info, Droplet, Loader2, Inbox as InboxIcon, Leaf } from "lucide-react";
 import { todayISODate } from "@/lib/store/util";
 import { useAuth } from "@/lib/useAuth";
 import { useDay, useSettings, useCycleLogs, useLogSessions } from "@/lib/queries";
@@ -137,6 +137,23 @@ export default function TodayPage() {
         >
           <Info size={14} className="text-primary" /> What can I say?
         </button>
+
+        {/* Can I eat it? — low-FODMAP food checker */}
+        <Link
+          href="/foods"
+          className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+        >
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-success-tint text-success">
+            <Leaf size={18} />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="text-[13px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+              Can I eat it?
+            </span>
+            <span className="truncate text-[12px] text-muted">Check any food on a low-FODMAP diet</span>
+          </div>
+          <ChevronRight size={18} className="text-faint" />
+        </Link>
 
         {settings && !settings.geminiApiKey && (
           <Link href="/settings" className="flex items-center gap-2 rounded-2xl bg-primary-tint px-4 py-3 text-[12px] font-medium text-primary-press">

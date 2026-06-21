@@ -1,0 +1,21 @@
+- [info] addFollowUps stores attacker-controlled cross-entity references (logSessionId/targetId) without ownership validation — The code description in the claim is accurate. addFollowUps (src/lib/server/prismaDataStore.ts:909-926) sets userId: this.userId but copies it.logSessionId ?? n
+- [info] Unvalidated `date` from request body injected unencoded into outbound Open-Meteo URLs (HTTP parameter injection) — The raw interpolation sinks exist exactly as cited (src/lib/context/openMeteo.ts:70 and :118: `&start_date=${date}&end_date=${date}`), but they are UNREACHABLE 
+- [info] No Content-Security-Policy or HSTS headers configured — The factual claims are all accurate: next.config.ts (lines 1-7) defines no headers() function, so there is no Content-Security-Policy and no Strict-Transport-Se
+- [not-a-bug] Logout does not clear the session cookie with matching Secure/SameSite attributes — Verified against the actual code. Cookie is set in login (src/app/api/auth/login/route.ts:17) and signup (src/app/api/auth/signup/route.ts:34) via sessionCookie
+- [not-a-bug] Failed-job error string (containing upstream Gemini error detail) is persisted on LogSession and re-served to the client via the data RPC — The claim's data-flow facts are all accurate, but it is not a real security vulnerability because no trust/tenant boundary is crossed.
+
+Verified facts:
+- jobs/r
+- [info] [parse] server logs print user-typed/transcribed content context indirectly and full upstream model identifiers / error detail — Verified against src/lib/gemini/parse.ts and src/app/api/jobs/route.ts. The claim materially overstates what is logged.
+
+WHAT IS ACTUALLY LOGGED (confirmed):
+- 
+- [not-a-bug] occurredAt and the day-rating timestamp are fully client-controlled, letting a user backdate/forward-date entries onto arbitrary calendar days and inflate any day's counts/rating — Code mechanics in the claim are accurate and I confirmed every cited line. addMeal/addSymptom/addMood/addHydration do `new Date(input.occurredAt)` with no bound
+- [not-a-bug] updateLogSession lets a user set parseStatus / confirmedAt / entryCount to any value, decoupling job state from reality (re-confirm, fake counts, force 'parsed') — The code references are all correct and the described POST requests would behave as claimed — but this is a false positive as a vulnerability. CWE-639 (Authoriz
+- [info] bcrypt silently truncates passwords at 72 bytes with no pre-hash and no maximum length, causing distinct long passwords to authenticate interchangeably — The technical mechanism is accurate and I empirically verified it against the installed bcryptjs@3.0.3 (confirmed node_modules/bcryptjs/package.json: "version":
+- [low] AI-emitted suspected-trigger text (source "ai") silently overrides the statistical gate of the food-symptom correlation engine — The code-level MECHANISM is accurately described and verified. In src/lib/patterns/correlate.ts:88-91, explicitlySuspects() does `symptom.triggers.some(t => (t.
+- [info] No length cap or output allow-listing on any AI-generated free-text field before persistence — The factual code claims are all ACCURATE and verified: schema.ts has no `.max()` on any string field (suspectedFoodText:70, questionText:114 has only `.min(1)`,
+- [not-a-bug] AI-emitted allergen flags (isPotentialAllergen / allergenType) trusted with no semantic validation — The code mechanism is described accurately, but the claimed impact does not exist, so this is not an exploitable vulnerability.
+
+WHAT IS TRUE (code-grounded):
+-
