@@ -41,6 +41,9 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   themeColor: "#fbf7f2",
+  // When the on-screen keyboard opens, shrink the layout viewport (so 100dvh
+  // contracts) instead of letting the browser scroll the page up under it.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

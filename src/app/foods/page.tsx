@@ -30,9 +30,37 @@ export default function FoodsPage() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [acked, setAcked] = useState<boolean | null>(null);
+  const [vvStyle, setVvStyle] = useState<React.CSSProperties>();
 
   useEffect(() => {
     setAcked(window.localStorage.getItem(ACK_KEY) === "1");
+  }, []);
+
+  // Keyboard-friendly layout: pin the page to the *visual* viewport (which DOES
+  // shrink when the on-screen keyboard opens) so the header stays put and only
+  // the scrollable list contracts — instead of the browser pushing the whole
+  // page up to reveal the focused search input.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setVvStyle({ height: vv.height, transform: `translateY(${vv.offsetTop}px)` });
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
+  // Lock document scroll while this full-screen tool is mounted so nothing can
+  // scroll underneath the pinned container (notably on iOS).
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
   }, []);
 
   const results = useMemo(() => searchFoods(query), [query]);
@@ -52,7 +80,10 @@ export default function FoodsPage() {
   }
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div
+      className="fixed inset-x-0 top-0 z-10 mx-auto flex w-full max-w-[30rem] flex-col bg-canvas"
+      style={{ height: "100dvh", ...vvStyle }}
+    >
       {/* Header + legend */}
       <header className="flex flex-col gap-3 border-b border-line px-5 pb-3 pt-3">
         <div className="flex items-center gap-3">
