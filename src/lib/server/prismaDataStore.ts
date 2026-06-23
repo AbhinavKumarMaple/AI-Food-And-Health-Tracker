@@ -39,6 +39,7 @@ import type {
   User,
   UserSettings,
 } from "@/lib/store/types";
+import type { Drafts } from "@/lib/draft";
 
 const newId = () => crypto.randomUUID();
 const nowIso = (): ISODateTime => new Date().toISOString();
@@ -303,6 +304,99 @@ function insightToDomain(r: Row): Insight {
   };
 }
 
+// Pure builders for entry create-data — the SINGLE source of truth shared by the
+// add* methods AND the transactional confirmLogSession, so both write identical rows.
+
+function mealCreateData(userId: string, m: NewMeal): Prisma.MealUncheckedCreateInput {
+  return {
+    userId,
+    logSessionId: m.logSessionId ?? null,
+    occurredAt: new Date(m.occurredAt),
+    timeConfidence: m.timeConfidence,
+    mealType: m.mealType,
+    title: m.title,
+    description: m.description ?? null,
+    location: m.location ?? null,
+    restaurantName: m.restaurantName ?? null,
+    socialContext: m.socialContext ?? null,
+    hungerBefore: m.hungerBefore ?? null,
+    fullnessAfter: m.fullnessAfter ?? null,
+    preparation: m.preparation ?? null,
+    estimatedCalories: m.estimatedCalories ?? null,
+    macros: J(m.macros),
+    portionSize: m.portionSize ?? null,
+    completenessScore: m.completenessScore,
+    aiConfidence: m.aiConfidence ?? null,
+    source: m.source,
+    notes: m.notes ?? null,
+    items: m.items.map((it) => ({ ...it, id: newId() })) as unknown as Prisma.InputJsonValue,
+  };
+}
+
+function symptomCreateData(userId: string, s: NewSymptom): Prisma.SymptomUncheckedCreateInput {
+  const triggers = (s.triggers ?? []).map((t) => ({ ...t, id: newId(), createdAt: nowIso() }));
+  return {
+    userId,
+    logSessionId: s.logSessionId ?? null,
+    occurredAt: new Date(s.occurredAt),
+    timeConfidence: s.timeConfidence,
+    symptomType: s.symptomType,
+    title: s.title,
+    severity: s.severity,
+    durationMinutes: s.durationMinutes ?? null,
+    isOngoing: s.isOngoing,
+    resolvedAt: s.resolvedAt ? new Date(s.resolvedAt) : null,
+    bodyLocation: s.bodyLocation ?? null,
+    description: s.description ?? null,
+    completenessScore: s.completenessScore,
+    aiConfidence: s.aiConfidence ?? null,
+    source: s.source,
+    triggers: triggers as unknown as Prisma.InputJsonValue,
+  };
+}
+
+function moodCreateData(userId: string, m: NewMood): Prisma.MoodUncheckedCreateInput {
+  return {
+    userId,
+    logSessionId: m.logSessionId ?? null,
+    occurredAt: new Date(m.occurredAt),
+    rating: m.rating,
+    label: m.label ?? null,
+    energyLevel: m.energyLevel ?? null,
+    stressLevel: m.stressLevel ?? null,
+    notes: m.notes ?? null,
+    source: m.source,
+  };
+}
+
+function hydrationCreateData(userId: string, h: NewHydration): Prisma.HydrationLogUncheckedCreateInput {
+  return {
+    userId,
+    logSessionId: h.logSessionId ?? null,
+    occurredAt: new Date(h.occurredAt),
+    amountMl: h.amountMl,
+    beverageType: h.beverageType,
+    notes: h.notes ?? null,
+    source: h.source,
+  };
+}
+
+/** Build the defined cycle-day fields from a patch (shared by upsert + confirm). */
+function cyclePatchData(patch: CycleLogPatch): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  if (patch.isPeriodStart !== undefined) data.isPeriodStart = patch.isPeriodStart;
+  if (patch.flow !== undefined) data.flow = patch.flow;
+  if (patch.clots !== undefined) data.clots = patch.clots;
+  if (patch.flooding !== undefined) data.flooding = patch.flooding;
+  if (patch.bbtCelsius !== undefined) data.bbtCelsius = patch.bbtCelsius;
+  if (patch.cervicalMucus !== undefined) data.cervicalMucus = patch.cervicalMucus;
+  if (patch.ovulationTest !== undefined) data.ovulationTest = patch.ovulationTest;
+  if (patch.intercourse !== undefined) data.intercourse = patch.intercourse;
+  if (patch.notes !== undefined) data.notes = patch.notes;
+  if (patch.source !== undefined) data.source = patch.source;
+  return data;
+}
+
 /** Server implementation of DataStore backed by Prisma / Supabase. */
 export class PrismaDataStore implements DataStore {
   private tzCache?: string;
@@ -454,6 +548,118 @@ export class PrismaDataStore implements DataStore {
     });
     return this.logSessionToDomain(row as Row);
   }
+
+  /**
+   * Confirm a reviewed capture: create all its entries and mark the session
+   * confirmed — ATOMICALLY and IDEMPOTENTLY. The whole thing is one transaction
+   * guarded on parseStatus, so a retried call (e.g. the network dropped the first
+   * response after it had already committed) is a no-op rather than a duplicate
+   * write. This is the fix for entries being saved twice.
+   */
+  async confirmLogSession(
+    sessionId: ID,
+    drafts: Drafts,
+  ): Promise<{ entryCount: number; alreadyConfirmed: boolean }> {
+    const session = await prisma.logSession.findFirst({
+      where: { id: sessionId, userId: this.userId },
+      select: { id: true, parseStatus: true, entryCount: true },
+    });
+    if (!session) throw new Error("Session not found");
+    if (session.parseStatus === "confirmed") {
+      return { entryCount: session.entryCount, alreadyConfirmed: true };
+    }
+
+    const tz = await this.tz();
+    const dates = new Set<ISODate>();
+    let count = 0;
+    let already = false;
+
+    await prisma.$transaction(
+      async (tx) => {
+        // Re-check inside the transaction: a concurrent/retried confirm that
+        // already committed leaves the session "confirmed" → bail out, no dupes.
+        const fresh = await tx.logSession.findFirst({
+          where: { id: sessionId, userId: this.userId },
+          select: { parseStatus: true },
+        });
+        if (fresh?.parseStatus === "confirmed") {
+          already = true;
+          return;
+        }
+
+        const mealIds: string[] = [];
+        for (const m of drafts.meals) {
+          const r = await tx.meal.create({ data: mealCreateData(this.userId, { ...m, logSessionId: sessionId }) });
+          mealIds.push(r.id);
+          dates.add(userLocalDate(r.occurredAt.toISOString(), tz));
+        }
+        const symptomIds: string[] = [];
+        for (const s of drafts.symptoms) {
+          const r = await tx.symptom.create({ data: symptomCreateData(this.userId, { ...s, logSessionId: sessionId }) });
+          symptomIds.push(r.id);
+          dates.add(userLocalDate(r.occurredAt.toISOString(), tz));
+        }
+        const moodIds: string[] = [];
+        for (const m of drafts.moods) {
+          const r = await tx.mood.create({ data: moodCreateData(this.userId, { ...m, logSessionId: sessionId }) });
+          moodIds.push(r.id);
+          dates.add(userLocalDate(r.occurredAt.toISOString(), tz));
+        }
+        const hydrationIds: string[] = [];
+        for (const h of drafts.hydration) {
+          const r = await tx.hydrationLog.create({ data: hydrationCreateData(this.userId, { ...h, logSessionId: sessionId }) });
+          hydrationIds.push(r.id);
+          dates.add(userLocalDate(r.occurredAt.toISOString(), tz));
+        }
+        for (const c of drafts.cycle) {
+          const data = cyclePatchData(c.patch);
+          await tx.cycleLog.upsert({
+            where: { userId_date: { userId: this.userId, date: c.date } },
+            create: { userId: this.userId, date: c.date, ...data } as Prisma.CycleLogUncheckedCreateInput,
+            update: data as Prisma.CycleLogUncheckedUpdateInput,
+          });
+        }
+        for (const f of drafts.followUps) {
+          let targetId: string | null = null;
+          if (f.targetIndex != null) {
+            if (f.targetType === "meal") targetId = mealIds[f.targetIndex] ?? null;
+            else if (f.targetType === "symptom") targetId = symptomIds[f.targetIndex] ?? null;
+            else if (f.targetType === "mood") targetId = moodIds[f.targetIndex] ?? null;
+            else if (f.targetType === "hydration") targetId = hydrationIds[f.targetIndex] ?? null;
+          }
+          const answered = !!f.answerText?.trim();
+          await tx.followUpQuestion.create({
+            data: {
+              userId: this.userId,
+              logSessionId: sessionId,
+              targetType: f.targetType,
+              targetId,
+              questionText: f.questionText,
+              fieldHint: f.fieldHint ?? null,
+              generatedBy: "ai",
+              ...(answered ? { status: "answered", answerText: f.answerText!.trim(), answeredAt: new Date() } : {}),
+            },
+          });
+        }
+
+        count = mealIds.length + symptomIds.length + moodIds.length + hydrationIds.length;
+        await tx.logSession.update({
+          where: { id: sessionId },
+          data: { parseStatus: "confirmed", confirmedAt: new Date(), entryCount: count },
+        });
+      },
+      { timeout: 20000 },
+    );
+
+    if (already) {
+      const s = await prisma.logSession.findUnique({ where: { id: sessionId }, select: { entryCount: true } });
+      return { entryCount: s?.entryCount ?? 0, alreadyConfirmed: true };
+    }
+    // Day rollups (counts/water/mood avg) — recompute affected days once, post-commit.
+    for (const d of dates) await this.recomputeDaySummary(d);
+    return { entryCount: count, alreadyConfirmed: false };
+  }
+
   async listLogSessions(
     statuses?: import("@/lib/store/types").ParseStatus[],
   ): Promise<import("@/lib/store/types").LogSession[]> {
@@ -490,31 +696,7 @@ export class PrismaDataStore implements DataStore {
   // ---- meals ----------------------------------------------------------------
 
   async addMeal(meal: NewMeal): Promise<Meal> {
-    const row = await prisma.meal.create({
-      data: {
-        userId: this.userId,
-        logSessionId: meal.logSessionId ?? null,
-        occurredAt: new Date(meal.occurredAt),
-        timeConfidence: meal.timeConfidence,
-        mealType: meal.mealType,
-        title: meal.title,
-        description: meal.description ?? null,
-        location: meal.location ?? null,
-        restaurantName: meal.restaurantName ?? null,
-        socialContext: meal.socialContext ?? null,
-        hungerBefore: meal.hungerBefore ?? null,
-        fullnessAfter: meal.fullnessAfter ?? null,
-        preparation: meal.preparation ?? null,
-        estimatedCalories: meal.estimatedCalories ?? null,
-        macros: J(meal.macros),
-        portionSize: meal.portionSize ?? null,
-        completenessScore: meal.completenessScore,
-        aiConfidence: meal.aiConfidence ?? null,
-        source: meal.source,
-        notes: meal.notes ?? null,
-        items: meal.items.map((it) => ({ ...it, id: newId() })) as unknown as Prisma.InputJsonValue,
-      },
-    });
+    const row = await prisma.meal.create({ data: mealCreateData(this.userId, meal) });
     const full = mealToDomain(row as Row);
     await this.recomputeDaySummary(userLocalDate(full.occurredAt, await this.tz()));
     return full;
@@ -564,27 +746,7 @@ export class PrismaDataStore implements DataStore {
   // ---- symptoms -------------------------------------------------------------
 
   async addSymptom(s: NewSymptom): Promise<Symptom> {
-    const triggers = (s.triggers ?? []).map((t) => ({ ...t, id: newId(), createdAt: nowIso() }));
-    const row = await prisma.symptom.create({
-      data: {
-        userId: this.userId,
-        logSessionId: s.logSessionId ?? null,
-        occurredAt: new Date(s.occurredAt),
-        timeConfidence: s.timeConfidence,
-        symptomType: s.symptomType,
-        title: s.title,
-        severity: s.severity,
-        durationMinutes: s.durationMinutes ?? null,
-        isOngoing: s.isOngoing,
-        resolvedAt: s.resolvedAt ? new Date(s.resolvedAt) : null,
-        bodyLocation: s.bodyLocation ?? null,
-        description: s.description ?? null,
-        completenessScore: s.completenessScore,
-        aiConfidence: s.aiConfidence ?? null,
-        source: s.source,
-        triggers: triggers as unknown as Prisma.InputJsonValue,
-      },
-    });
+    const row = await prisma.symptom.create({ data: symptomCreateData(this.userId, s) });
     const full = symptomToDomain(row as Row);
     await this.recomputeDaySummary(userLocalDate(full.occurredAt, await this.tz()));
     return full;
@@ -632,19 +794,7 @@ export class PrismaDataStore implements DataStore {
   // ---- mood & hydration -----------------------------------------------------
 
   async addMood(m: NewMood): Promise<Mood> {
-    const row = await prisma.mood.create({
-      data: {
-        userId: this.userId,
-        logSessionId: m.logSessionId ?? null,
-        occurredAt: new Date(m.occurredAt),
-        rating: m.rating,
-        label: m.label ?? null,
-        energyLevel: m.energyLevel ?? null,
-        stressLevel: m.stressLevel ?? null,
-        notes: m.notes ?? null,
-        source: m.source,
-      },
-    });
+    const row = await prisma.mood.create({ data: moodCreateData(this.userId, m) });
     const full = moodToDomain(row as Row);
     await this.recomputeDaySummary(userLocalDate(full.occurredAt, await this.tz()));
     return full;
@@ -673,17 +823,7 @@ export class PrismaDataStore implements DataStore {
   }
 
   async addHydration(h: NewHydration): Promise<HydrationLog> {
-    const row = await prisma.hydrationLog.create({
-      data: {
-        userId: this.userId,
-        logSessionId: h.logSessionId ?? null,
-        occurredAt: new Date(h.occurredAt),
-        amountMl: h.amountMl,
-        beverageType: h.beverageType,
-        notes: h.notes ?? null,
-        source: h.source,
-      },
-    });
+    const row = await prisma.hydrationLog.create({ data: hydrationCreateData(this.userId, h) });
     const full = hydrationToDomain(row as Row);
     await this.recomputeDaySummary(userLocalDate(full.occurredAt, await this.tz()));
     return full;
@@ -723,18 +863,7 @@ export class PrismaDataStore implements DataStore {
   }
 
   async upsertCycleLog(date: ISODate, patch: CycleLogPatch): Promise<CycleLog> {
-    const data: Record<string, unknown> = {};
-    if (patch.isPeriodStart !== undefined) data.isPeriodStart = patch.isPeriodStart;
-    if (patch.flow !== undefined) data.flow = patch.flow;
-    if (patch.clots !== undefined) data.clots = patch.clots;
-    if (patch.flooding !== undefined) data.flooding = patch.flooding;
-    if (patch.bbtCelsius !== undefined) data.bbtCelsius = patch.bbtCelsius;
-    if (patch.cervicalMucus !== undefined) data.cervicalMucus = patch.cervicalMucus;
-    if (patch.ovulationTest !== undefined) data.ovulationTest = patch.ovulationTest;
-    if (patch.intercourse !== undefined) data.intercourse = patch.intercourse;
-    if (patch.notes !== undefined) data.notes = patch.notes;
-    if (patch.source !== undefined) data.source = patch.source;
-
+    const data = cyclePatchData(patch);
     const row = await prisma.cycleLog.upsert({
       where: { userId_date: { userId: this.userId, date } },
       create: { userId: this.userId, date, ...data } as Prisma.CycleLogUncheckedCreateInput,

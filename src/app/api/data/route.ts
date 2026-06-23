@@ -14,6 +14,7 @@ const ALLOWED = new Set<string>([
   "getLogSession",
   "updateLogSession",
   "listLogSessions",
+  "confirmLogSession",
   "addMeal",
   "updateMeal",
   "deleteMeal",

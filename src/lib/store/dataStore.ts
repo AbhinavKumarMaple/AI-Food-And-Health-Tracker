@@ -20,6 +20,7 @@ import type {
   User,
   UserSettings,
 } from "./types";
+import type { Drafts } from "@/lib/draft";
 
 // Input shapes for creation: callers supply the meaningful fields; the store
 // fills id / userId / timestamps / defaults.
@@ -93,6 +94,11 @@ export interface DataStore {
   updateLogSession(id: ID, patch: Partial<LogSession>): Promise<LogSession>;
   /** List capture sessions (the "Inbox"), optionally filtered by status. */
   listLogSessions(statuses?: ParseStatus[]): Promise<LogSession[]>;
+  /**
+   * Atomically + idempotently create all of a reviewed capture's entries and mark
+   * the session confirmed. Safe to retry — a second call is a no-op (no duplicates).
+   */
+  confirmLogSession(sessionId: ID, drafts: Drafts): Promise<{ entryCount: number; alreadyConfirmed: boolean }>;
 
   // meals
   addMeal(meal: NewMeal): Promise<Meal>;

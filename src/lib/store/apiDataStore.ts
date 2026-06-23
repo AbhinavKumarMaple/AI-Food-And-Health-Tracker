@@ -11,6 +11,7 @@ import type {
   NewMood,
   NewSymptom,
 } from "./dataStore";
+import type { Drafts } from "@/lib/draft";
 import type {
   CorrelationDataset,
   CycleLog,
@@ -70,6 +71,9 @@ export class ApiDataStore implements DataStore {
   }
   listLogSessions(statuses?: ParseStatus[]) {
     return rpc<LogSession[]>("listLogSessions", [statuses]);
+  }
+  confirmLogSession(sessionId: ID, drafts: Drafts) {
+    return rpc<{ entryCount: number; alreadyConfirmed: boolean }>("confirmLogSession", [sessionId, drafts]);
   }
 
   addMeal(meal: NewMeal) {

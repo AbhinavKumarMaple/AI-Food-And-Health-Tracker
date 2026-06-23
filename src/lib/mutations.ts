@@ -248,52 +248,12 @@ export function saveLogOptimistic(args: {
     };
   });
 
-  // 2. Real writes in the background (retried), then reconcile.
+  // 2. Persist via ONE idempotent server call, then reconcile. The whole save is
+  //    a single transactional confirm keyed on the session — so retrying it (e.g.
+  //    a dropped response after the write committed) can't create duplicates.
   void (async () => {
-    const store = getStore();
     try {
-      const mealIds: string[] = [];
-      for (const m of drafts.meals) mealIds.push((await withRetry(() => store.addMeal(m))).id);
-      const symptomIds: string[] = [];
-      for (const s of drafts.symptoms) symptomIds.push((await withRetry(() => store.addSymptom(s))).id);
-      const moodIds: string[] = [];
-      for (const m of drafts.moods) moodIds.push((await withRetry(() => store.addMood(m))).id);
-      const hydrationIds: string[] = [];
-      for (const h of drafts.hydration) hydrationIds.push((await withRetry(() => store.addHydration(h))).id);
-      for (const c of drafts.cycle) await withRetry(() => store.upsertCycleLog(c.date, c.patch));
-
-      const fuPayload = drafts.followUps.map((f) => {
-        let targetId: string | null = null;
-        if (f.targetIndex != null) {
-          if (f.targetType === "meal") targetId = mealIds[f.targetIndex] ?? null;
-          else if (f.targetType === "symptom") targetId = symptomIds[f.targetIndex] ?? null;
-          else if (f.targetType === "mood") targetId = moodIds[f.targetIndex] ?? null;
-          else if (f.targetType === "hydration") targetId = hydrationIds[f.targetIndex] ?? null;
-        }
-        return {
-          logSessionId: sessionId,
-          targetType: f.targetType,
-          targetId,
-          questionText: f.questionText,
-          fieldHint: f.fieldHint,
-          generatedBy: "ai",
-        };
-      });
-      if (fuPayload.length) {
-        const createdFu = await withRetry(() => store.addFollowUps(fuPayload));
-        for (let i = 0; i < drafts.followUps.length; i++) {
-          const ans = drafts.followUps[i].answerText;
-          if (ans && ans.trim()) await withRetry(() => store.answerFollowUp(createdFu[i].id, ans.trim()));
-        }
-      }
-
-      await withRetry(() =>
-        store.updateLogSession(sessionId, {
-          parseStatus: "confirmed",
-          confirmedAt: nowIso(),
-          entryCount: mealIds.length + symptomIds.length + moodIds.length + hydrationIds.length,
-        }),
-      );
+      await withRetry(() => getStore().confirmLogSession(sessionId, drafts));
       invalidateEntries(queryClient);
       queryClient.invalidateQueries({ queryKey: qk.logSessions }); // drop from Inbox
     } catch {

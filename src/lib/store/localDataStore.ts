@@ -40,6 +40,7 @@ import type {
   User,
   UserSettings,
 } from "./types";
+import type { Drafts } from "@/lib/draft";
 import { compareDesc, newId, nowIso, toISODate } from "./util";
 import { endOfDayIso, roundRating, timeWeightedRating } from "@/lib/patterns/dayRating";
 import { moodLabel } from "@/lib/format";
@@ -151,6 +152,52 @@ export class LocalDataStore implements DataStore {
     return this.read<LogSession[]>("sessions", [])
       .filter((s) => !statuses?.length || statuses.includes(s.parseStatus))
       .sort((a, b) => compareDesc(a.createdAt, b.createdAt));
+  }
+  async confirmLogSession(
+    sessionId: ID,
+    drafts: Drafts,
+  ): Promise<{ entryCount: number; alreadyConfirmed: boolean }> {
+    const session = await this.getLogSession(sessionId);
+    if (session?.parseStatus === "confirmed") {
+      return { entryCount: session.entryCount, alreadyConfirmed: true };
+    }
+    const mealIds: string[] = [];
+    for (const m of drafts.meals) mealIds.push((await this.addMeal({ ...m, logSessionId: sessionId })).id);
+    const symptomIds: string[] = [];
+    for (const s of drafts.symptoms) symptomIds.push((await this.addSymptom({ ...s, logSessionId: sessionId })).id);
+    const moodIds: string[] = [];
+    for (const m of drafts.moods) moodIds.push((await this.addMood({ ...m, logSessionId: sessionId })).id);
+    const hydrationIds: string[] = [];
+    for (const h of drafts.hydration) hydrationIds.push((await this.addHydration({ ...h, logSessionId: sessionId })).id);
+    for (const c of drafts.cycle) await this.upsertCycleLog(c.date, c.patch);
+
+    const fuPayload: NewFollowUp[] = drafts.followUps.map((f) => {
+      let targetId: string | null = null;
+      if (f.targetIndex != null) {
+        if (f.targetType === "meal") targetId = mealIds[f.targetIndex] ?? null;
+        else if (f.targetType === "symptom") targetId = symptomIds[f.targetIndex] ?? null;
+        else if (f.targetType === "mood") targetId = moodIds[f.targetIndex] ?? null;
+        else if (f.targetType === "hydration") targetId = hydrationIds[f.targetIndex] ?? null;
+      }
+      return {
+        logSessionId: sessionId,
+        targetType: f.targetType,
+        targetId,
+        questionText: f.questionText,
+        fieldHint: f.fieldHint,
+        generatedBy: "ai",
+      };
+    });
+    if (fuPayload.length) {
+      const created = await this.addFollowUps(fuPayload);
+      for (let i = 0; i < drafts.followUps.length; i++) {
+        const ans = drafts.followUps[i].answerText;
+        if (ans && ans.trim()) await this.answerFollowUp(created[i].id, ans.trim());
+      }
+    }
+    const count = mealIds.length + symptomIds.length + moodIds.length + hydrationIds.length;
+    await this.updateLogSession(sessionId, { parseStatus: "confirmed", confirmedAt: nowIso(), entryCount: count });
+    return { entryCount: count, alreadyConfirmed: false };
   }
 
   // ---- meals -----------------------------------------------------------------
