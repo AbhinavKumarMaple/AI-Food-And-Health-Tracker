@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { QueryClient, QueryClientProvider, dehydrate, hydrate } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { AppWarmup } from "./AppWarmup";
-import { PERSIST_KEY } from "@/lib/queries";
+import { persistKeyFor, readActiveUid, LEGACY_PERSIST_KEY } from "@/lib/queries";
 
 const ONE_DAY = 1000 * 60 * 60 * 24;
 const BUSTER = "v2";
@@ -40,34 +40,44 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // flash. Stale queries then refetch in the background and swap in quietly.
   const [, force] = useState(0);
   useIsoLayoutEffect(() => {
+    // Always drop the old non-namespaced cache (pre multi-account) so it can never
+    // bleed into a different account.
+    window.localStorage.removeItem(LEGACY_PERSIST_KEY);
+    // Hydrate ONLY the cache belonging to the currently-signed-in account. Logged
+    // out (no avni_uid) → hydrate nothing, so no prior user's data is restored.
+    const key = persistKeyFor(readActiveUid());
+    if (!key) return;
     try {
-      const raw = window.localStorage.getItem(PERSIST_KEY);
+      const raw = window.localStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw) as Persisted;
         if (parsed.buster === BUSTER && Date.now() - parsed.timestamp < ONE_DAY) {
           hydrate(queryClient, parsed.clientState);
           force((n) => n + 1); // ensure the tree re-renders with restored data pre-paint
         } else {
-          window.localStorage.removeItem(PERSIST_KEY);
+          window.localStorage.removeItem(key);
         }
       }
     } catch {
       // corrupt cache — ignore and start fresh
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient]);
 
   // Persist cache changes back to localStorage (throttled), and on unload.
   useEffect(() => {
+    // Persist under the active account's key. We reload on login/switch, so the
+    // key resolved at mount stays correct for this Providers instance's lifetime.
+    const key = persistKeyFor(readActiveUid());
     let timer: ReturnType<typeof setTimeout> | null = null;
     const save = () => {
+      if (!key) return; // logged out — never persist an anonymous cache
       try {
         const data: Persisted = {
           buster: BUSTER,
           timestamp: Date.now(),
           clientState: dehydrate(queryClient),
         };
-        window.localStorage.setItem(PERSIST_KEY, JSON.stringify(data));
+        window.localStorage.setItem(key, JSON.stringify(data));
       } catch {
         // quota / serialization issues are non-fatal
       }

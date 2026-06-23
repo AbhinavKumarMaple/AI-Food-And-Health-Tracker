@@ -8,6 +8,7 @@ import type { Drafts } from "@/lib/draft";
 import type {
   DayDetail,
   DaySummary,
+  FoodNote,
   HydrationLog,
   ISODate,
   LogSession,
@@ -298,6 +299,77 @@ export function saveLogOptimistic(args: {
     } catch {
       toast.error("Some entries didn't save. Open the day and tap refresh to check.");
       invalidateEntries(queryClient);
+    }
+  })();
+}
+
+// ---- personal food notes ("Can I eat it?" checker) ------------------------
+
+export type FoodNoteInput = {
+  foodName: string;
+  note: string;
+  reaction: boolean;
+  reactionLabel: string | null;
+  isCustom: boolean;
+};
+
+/**
+ * Add/update a food note WITHOUT waiting: reflect it in the notes cache instantly
+ * (so search shows it right away), then persist in the background with retries.
+ * Rolls back + toasts on failure.
+ */
+export function upsertFoodNoteOptimistic(
+  queryClient: QueryClient,
+  foodKey: string,
+  patch: FoodNoteInput,
+): void {
+  const key = foodKey.trim().toLowerCase();
+  const prev = queryClient.getQueryData<FoodNote[]>(qk.foodNotes);
+  const now = nowIso();
+
+  queryClient.setQueryData<FoodNote[]>(qk.foodNotes, (old) => {
+    const list = old ?? [];
+    if (list.some((n) => n.foodKey === key)) {
+      return list.map((n) => (n.foodKey === key ? { ...n, ...patch, updatedAt: now } : n));
+    }
+    const optimistic: FoodNote = {
+      id: `temp-${newId()}`,
+      userId: "",
+      foodKey: key,
+      ...patch,
+      createdAt: now,
+      updatedAt: now,
+    };
+    return [optimistic, ...list];
+  });
+
+  void (async () => {
+    try {
+      await withRetry(() => getStore().upsertFoodNote(key, patch));
+      queryClient.invalidateQueries({ queryKey: qk.foodNotes });
+    } catch {
+      if (prev) queryClient.setQueryData(qk.foodNotes, prev);
+      else queryClient.invalidateQueries({ queryKey: qk.foodNotes });
+      toast.error("Couldn't save your note.");
+    }
+  })();
+}
+
+/** Remove a food note WITHOUT waiting: drop it from the cache, then delete on the
+ *  server (with retries). Restores it + toasts on failure. */
+export function deleteFoodNoteOptimistic(queryClient: QueryClient, foodKey: string): void {
+  const key = foodKey.trim().toLowerCase();
+  const prev = queryClient.getQueryData<FoodNote[]>(qk.foodNotes);
+  queryClient.setQueryData<FoodNote[]>(qk.foodNotes, (old) =>
+    old ? old.filter((n) => n.foodKey !== key) : old,
+  );
+  void (async () => {
+    try {
+      await withRetry(() => getStore().deleteFoodNote(key));
+      queryClient.invalidateQueries({ queryKey: qk.foodNotes });
+    } catch {
+      if (prev) queryClient.setQueryData(qk.foodNotes, prev);
+      toast.error("Couldn't remove your note.");
     }
   })();
 }

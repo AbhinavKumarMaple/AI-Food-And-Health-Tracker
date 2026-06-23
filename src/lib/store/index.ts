@@ -20,7 +20,7 @@ export function getStore(): DataStore {
 }
 
 export type { DataStore } from "./dataStore";
-export type { AuthService } from "./apiAuth";
+export type { AuthService, AccountSummary } from "./apiAuth";
 export * from "./types";
 export type {
   NewMeal,

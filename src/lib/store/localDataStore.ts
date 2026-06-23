@@ -11,6 +11,7 @@ import type {
   DataStore,
   DateRange,
   DayContextPatch,
+  FoodNotePatch,
   NewFollowUp,
   NewHydration,
   NewLogSession,
@@ -25,6 +26,7 @@ import type {
   DayDetail,
   DaySummary,
   FollowUpQuestion,
+  FoodNote,
   HydrationLog,
   ID,
   Insight,
@@ -328,6 +330,42 @@ export class LocalDataStore implements DataStore {
   }
   async deleteCycleLog(date: ISODate): Promise<void> {
     this.write("cycleLogs", this.read<CycleLog[]>("cycleLogs", []).filter((c) => c.date !== date));
+  }
+
+  // ---- personal food notes ---------------------------------------------------
+
+  async listFoodNotes(): Promise<FoodNote[]> {
+    return this.read<FoodNote[]>("foodNotes", []).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+  }
+  async upsertFoodNote(foodKey: string, patch: FoodNotePatch): Promise<FoodNote> {
+    const key = foodKey.trim().toLowerCase();
+    const list = this.read<FoodNote[]>("foodNotes", []);
+    const idx = list.findIndex((n) => n.foodKey === key);
+    const now = nowIso();
+    if (idx === -1) {
+      const created: FoodNote = {
+        id: newId(),
+        userId: this.uid(),
+        foodKey: key,
+        foodName: patch.foodName ?? key,
+        note: patch.note ?? "",
+        reaction: patch.reaction ?? false,
+        reactionLabel: patch.reactionLabel ?? null,
+        isCustom: patch.isCustom ?? false,
+        createdAt: now,
+        updatedAt: now,
+      };
+      this.write("foodNotes", [created, ...list]);
+      return created;
+    }
+    const updated: FoodNote = { ...list[idx], ...patch, updatedAt: now };
+    list[idx] = updated;
+    this.write("foodNotes", list);
+    return updated;
+  }
+  async deleteFoodNote(foodKey: string): Promise<void> {
+    const key = foodKey.trim().toLowerCase();
+    this.write("foodNotes", this.read<FoodNote[]>("foodNotes", []).filter((n) => n.foodKey !== key));
   }
 
   // ---- day context -----------------------------------------------------------

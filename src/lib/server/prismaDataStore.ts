@@ -9,6 +9,7 @@ import type {
   DataStore,
   DateRange,
   DayContextPatch,
+  FoodNotePatch,
   NewFollowUp,
   NewHydration,
   NewLogSession,
@@ -23,6 +24,7 @@ import type {
   DayDetail,
   DaySummary,
   FollowUpQuestion,
+  FoodNote,
   HydrationLog,
   ID,
   Insight,
@@ -160,6 +162,21 @@ function cycleLogToDomain(r: Row): CycleLog {
     intercourse: (r.intercourse as boolean) ?? null,
     notes: (r.notes as string) ?? null,
     source: r.source as CycleLog["source"],
+    createdAt: (r.createdAt as Date).toISOString(),
+    updatedAt: (r.updatedAt as Date).toISOString(),
+  };
+}
+
+function foodNoteToDomain(r: Row): FoodNote {
+  return {
+    id: r.id as string,
+    userId: r.userId as string,
+    foodKey: r.foodKey as string,
+    foodName: r.foodName as string,
+    note: r.note as string,
+    reaction: r.reaction as boolean,
+    reactionLabel: (r.reactionLabel as string) ?? null,
+    isCustom: r.isCustom as boolean,
     createdAt: (r.createdAt as Date).toISOString(),
     updatedAt: (r.updatedAt as Date).toISOString(),
   };
@@ -728,6 +745,45 @@ export class PrismaDataStore implements DataStore {
 
   async deleteCycleLog(date: ISODate): Promise<void> {
     await prisma.cycleLog.deleteMany({ where: { userId: this.userId, date } });
+  }
+
+  // ---- personal food notes ("Can I eat it?" checker) ------------------------
+
+  async listFoodNotes(): Promise<FoodNote[]> {
+    const rows = await prisma.foodNote.findMany({
+      where: { userId: this.userId },
+      orderBy: { updatedAt: "desc" },
+    });
+    return rows.map((r) => foodNoteToDomain(r as Row));
+  }
+
+  async upsertFoodNote(foodKey: string, patch: FoodNotePatch): Promise<FoodNote> {
+    const key = foodKey.trim().toLowerCase();
+    const data: Record<string, unknown> = {};
+    if (patch.foodName !== undefined) data.foodName = patch.foodName;
+    if (patch.note !== undefined) data.note = patch.note;
+    if (patch.reaction !== undefined) data.reaction = patch.reaction;
+    if (patch.reactionLabel !== undefined) data.reactionLabel = patch.reactionLabel;
+    if (patch.isCustom !== undefined) data.isCustom = patch.isCustom;
+
+    const row = await prisma.foodNote.upsert({
+      where: { userId_foodKey: { userId: this.userId, foodKey: key } },
+      create: {
+        userId: this.userId,
+        foodKey: key,
+        foodName: patch.foodName ?? key,
+        note: patch.note ?? "",
+        ...data,
+      } as Prisma.FoodNoteUncheckedCreateInput,
+      update: data as Prisma.FoodNoteUncheckedUpdateInput,
+    });
+    return foodNoteToDomain(row as Row);
+  }
+
+  async deleteFoodNote(foodKey: string): Promise<void> {
+    await prisma.foodNote.deleteMany({
+      where: { userId: this.userId, foodKey: foodKey.trim().toLowerCase() },
+    });
   }
 
   // ---- day context (environment) --------------------------------------------

@@ -4,6 +4,7 @@ import type {
   DayDetail,
   DaySummary,
   FollowUpQuestion,
+  FoodNote,
   HydrationLog,
   ID,
   Insight,
@@ -43,6 +44,11 @@ export type CycleLogPatch = Partial<
 /** Fields a caller may set on a day's env snapshot. */
 export type DayContextPatch = Partial<
   Omit<DayContext, "id" | "userId" | "date" | "createdAt" | "updatedAt">
+>;
+
+/** Fields a caller may set on a food note; the store owns id/userId/foodKey/timestamps. */
+export type FoodNotePatch = Partial<
+  Omit<FoodNote, "id" | "userId" | "foodKey" | "createdAt" | "updatedAt">
 >;
 
 export type NewFollowUp = Omit<
@@ -114,6 +120,11 @@ export interface DataStore {
   listCycleLogs(range?: { start: ISODate; end: ISODate }): Promise<CycleLog[]>;
   upsertCycleLog(date: ISODate, patch: CycleLogPatch): Promise<CycleLog>;
   deleteCycleLog(date: ISODate): Promise<void>;
+
+  // personal food notes (for the "Can I eat it?" checker)
+  listFoodNotes(): Promise<FoodNote[]>;
+  upsertFoodNote(foodKey: string, patch: FoodNotePatch): Promise<FoodNote>;
+  deleteFoodNote(foodKey: string): Promise<void>;
 
   // per-day environmental context (auto-captured)
   getDayContext(date: ISODate): Promise<DayContext | null>;

@@ -3,6 +3,7 @@ import type {
   DataStore,
   DateRange,
   DayContextPatch,
+  FoodNotePatch,
   NewFollowUp,
   NewHydration,
   NewLogSession,
@@ -17,6 +18,7 @@ import type {
   DayDetail,
   DaySummary,
   FollowUpQuestion,
+  FoodNote,
   HydrationLog,
   ID,
   Insight,
@@ -120,6 +122,16 @@ export class ApiDataStore implements DataStore {
   }
   deleteCycleLog(date: ISODate) {
     return rpc<void>("deleteCycleLog", [date]);
+  }
+
+  listFoodNotes() {
+    return rpc<FoodNote[]>("listFoodNotes");
+  }
+  upsertFoodNote(foodKey: string, patch: FoodNotePatch) {
+    return rpc<FoodNote>("upsertFoodNote", [foodKey, patch]);
+  }
+  deleteFoodNote(foodKey: string) {
+    return rpc<void>("deleteFoodNote", [foodKey]);
   }
 
   getDayContext(date: ISODate) {

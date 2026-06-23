@@ -412,3 +412,25 @@ model Insight {
 
   @@index([userId, status])
 }
+
+// A user's personal note on a food in the "Can I eat it?" checker — their own
+// reaction/reminder layered on top of the static FODMAP data (e.g. "cucumber →
+// acidity"). One note per food per user (upserted by foodKey). `isCustom` marks a
+// food that isn't in the base FODMAP list, so it shows as a personal-only entry.
+model FoodNote {
+  id     String @id @default(cuid())
+  userId String
+
+  foodKey       String // normalized food name (lowercased) — the upsert key
+  foodName      String // display name
+  note          String  @db.Text
+  reaction      Boolean @default(false) // "this disagrees with me" personal flag
+  reactionLabel String? // short tag for the badge, e.g. "acidity"
+  isCustom      Boolean @default(false) // food not in the base FODMAP list
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, foodKey])
+  @@index([userId])
+}

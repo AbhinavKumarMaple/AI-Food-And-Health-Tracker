@@ -5,13 +5,31 @@ import { getAuth, getStore } from "@/lib/store";
 import type { ISODate, LogSession, ParseStatus } from "@/lib/store/types";
 import type { GeminiModel } from "@/lib/gemini/models";
 
-/** localStorage key the query cache is persisted under. */
-export const PERSIST_KEY = "avni-query-cache";
+/** localStorage prefix the query cache is persisted under, namespaced per account. */
+export const PERSIST_PREFIX = "avni-query-cache";
+/** The old non-namespaced key (pre multi-account) — cleaned up on load/clear. */
+export const LEGACY_PERSIST_KEY = "avni-query-cache";
 
-/** Clear the in-memory + persisted cache (on logout). */
-export function clearAllCache(client: QueryClient) {
+/** Per-account persist key, or null when logged out (don't persist an anon cache). */
+export function persistKeyFor(uid: string | null): string | null {
+  return uid ? `${PERSIST_PREFIX}:${uid}` : null;
+}
+
+/** Active user id from the readable `avni_uid` cookie (set by the server on
+ *  login/switch). Lets the client pick the right per-account cache before paint. */
+export function readActiveUid(): string | null {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(/(?:^|;\s*)avni_uid=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/** Clear the in-memory + persisted cache for the active (or given) account. */
+export function clearAllCache(client: QueryClient, uid?: string | null) {
   client.clear();
-  if (typeof window !== "undefined") window.localStorage.removeItem(PERSIST_KEY);
+  if (typeof window === "undefined") return;
+  const key = persistKeyFor(uid ?? readActiveUid());
+  if (key) window.localStorage.removeItem(key);
+  window.localStorage.removeItem(LEGACY_PERSIST_KEY); // tidy the old global cache
 }
 
 // Query keys (single source of truth)
@@ -25,6 +43,7 @@ export const qk = {
   cycleLogs: ["cycleLogs"] as const,
   dayContext: (date: ISODate) => ["dayContext", date] as const,
   logSessions: ["logSessions"] as const,
+  foodNotes: ["foodNotes"] as const,
 };
 
 /** Statuses that belong in the Inbox (still in flight or awaiting review). */
@@ -71,6 +90,15 @@ export function useCycleLogs(enabled = true) {
     queryKey: qk.cycleLogs,
     queryFn: () => getStore().listCycleLogs(),
     enabled,
+  });
+}
+
+export function useFoodNotes(enabled = true) {
+  return useQuery({
+    queryKey: qk.foodNotes,
+    queryFn: () => getStore().listFoodNotes(),
+    enabled,
+    staleTime: 5 * 60_000,
   });
 }
 

@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Settings, LogOut, Check, ChevronRight, HeartPulse, Droplet, CloudSun } from "lucide-react";
-import { getAuth, getStore } from "@/lib/store";
+import { Settings, LogOut, Check, ChevronRight, HeartPulse, Droplet, CloudSun, Plus, ArrowLeftRight } from "lucide-react";
+import { getAuth, getStore, type AccountSummary } from "@/lib/store";
 import type { User } from "@/lib/store/types";
 import { useAuth } from "@/lib/useAuth";
 import { useProfile, useSettings, useQueryClient, qk, clearAllCache } from "@/lib/queries";
@@ -20,13 +19,18 @@ function splitList(v: string): string[] {
 }
 
 export default function ProfilePage() {
-  const router = useRouter();
   const { user, loading } = useAuth();
   const queryClient = useQueryClient();
   const profQ = useProfile(!!user);
   const settingsQ = useSettings(!!user);
   const [profile, setProfile] = useState<User | null>(null);
   const [saved, setSaved] = useState(false);
+  const [accounts, setAccounts] = useState<AccountSummary[]>([]);
+  const [switching, setSwitching] = useState(false);
+
+  useEffect(() => {
+    if (user) getAuth().listAccounts().then(setAccounts);
+  }, [user]);
 
   const cycleEnabled = settingsQ.data?.cycleTrackingEnabled ?? false;
   async function toggleCycle(next: boolean) {
@@ -67,10 +71,29 @@ export default function ProfilePage() {
     setTimeout(() => setSaved(false), 1500);
   }
 
-  async function signOut() {
-    await getAuth().signOut();
-    clearAllCache(queryClient);
-    router.replace("/login");
+  async function switchTo(uid: string) {
+    if (uid === user?.id || switching) return;
+    setSwitching(true);
+    try {
+      await getAuth().switchAccount(uid);
+      window.location.assign("/"); // reload → that account's cookie + cache
+    } catch {
+      setSwitching(false);
+    }
+  }
+
+  async function signOutCurrent() {
+    const uid = user?.id ?? null;
+    await getAuth().signOut(); // server: drop from jar, switch to another if any
+    clearAllCache(queryClient, uid); // clear THIS account's cache explicitly
+    window.location.assign("/"); // reload → next account, or /login if none left
+  }
+
+  async function signOutAll() {
+    await getAuth().signOut(true);
+    accounts.forEach((a) => window.localStorage.removeItem(`avni-query-cache:${a.uid}`));
+    queryClient.clear();
+    window.location.assign("/login");
   }
 
   if (loading || !user || !profile) {
@@ -184,9 +207,57 @@ export default function ProfilePage() {
           <ChevronRight size={18} className="text-faint" />
         </Link>
 
-        <button onClick={signOut} className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-line bg-surface text-[15px] font-semibold text-danger">
-          <LogOut size={18} /> Sign out
+        {/* Accounts — save & switch between accounts without logging in each time */}
+        <section className="flex flex-col gap-2.5">
+          <h2 className="flex items-center gap-2 px-1 text-[13px] font-bold text-ink" style={{ fontFamily: "var(--font-display)" }}>
+            <ArrowLeftRight size={15} className="text-primary" /> Accounts
+          </h2>
+          <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+            {accounts.map((a, i) => (
+              <button
+                key={a.uid}
+                onClick={() => switchTo(a.uid)}
+                disabled={a.active || switching}
+                className={`flex w-full items-center gap-3 px-4 py-3 text-left transition ${i > 0 ? "border-t border-line" : ""} ${a.active ? "" : "hover:bg-warm active:scale-[0.99]"}`}
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-[15px] font-bold text-white" style={{ fontFamily: "var(--font-display)" }}>
+                  {(a.name || a.email)[0]?.toUpperCase()}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-[14px] font-semibold text-ink">{a.name || "You"}</span>
+                  <span className="truncate text-[12px] text-muted">{a.email}</span>
+                </div>
+                {a.active ? (
+                  <span className="flex items-center gap-1 text-[11px] font-bold text-success" style={{ fontFamily: "var(--font-label)" }}>
+                    <Check size={14} /> Active
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-semibold text-primary-press" style={{ fontFamily: "var(--font-label)" }}>
+                    Switch
+                  </span>
+                )}
+              </button>
+            ))}
+            <Link
+              href="/login"
+              className={`flex items-center gap-3 px-4 py-3 text-[14px] font-semibold text-primary-press ${accounts.length ? "border-t border-line" : ""}`}
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-dashed border-line text-primary">
+                <Plus size={16} />
+              </span>
+              Add another account
+            </Link>
+          </div>
+        </section>
+
+        <button onClick={signOutCurrent} className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-line bg-surface text-[15px] font-semibold text-danger">
+          <LogOut size={18} /> Sign out{accounts.length > 1 ? " of this account" : ""}
         </button>
+        {accounts.length > 1 && (
+          <button onClick={signOutAll} className="-mt-2 self-center px-3 py-1 text-[13px] font-medium text-faint">
+            Sign out of all accounts
+          </button>
+        )}
       </div>
     </Screen>
   );

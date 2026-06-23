@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { PrismaDataStore } from "@/lib/server/prismaDataStore";
-import { createSessionToken, SESSION_COOKIE, sessionCookieOptions, isSecureRequest } from "@/lib/server/session";
+import { setActiveAccount } from "@/lib/server/session";
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     }
     const profile = await new PrismaDataStore(user.id).getProfile();
     const res = NextResponse.json({ user: profile });
-    res.cookies.set(SESSION_COOKIE, createSessionToken(user.id), sessionCookieOptions(isSecureRequest(req)));
+    setActiveAccount(req, res, user.id); // active session + readable uid + add to account jar
     return res;
   } catch (e) {
     return NextResponse.json(

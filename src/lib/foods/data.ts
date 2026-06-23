@@ -37,6 +37,9 @@ export interface FoodItem {
 export const FOOD_SOURCE =
   "Base list: Gastroenterology Consultants of San Antonio (gastroconsa.com); dose/serving guidance per Monash University FODMAP research.";
 
+/** Normalized key linking a food (or a user's custom food) to its personal note. */
+export const foodKey = (name: string): string => name.trim().toLowerCase();
+
 export const FOODS: FoodItem[] = [
   // ───────────────────────── Excess fructose ─────────────────────────
   { name: "Apple", status: "red", dominantFodmap: "Excess fructose & sorbitol", category: "Fruit", swap: "orange, kiwi or a firm banana", confidence: "tested", aliases: ["seb", "सेब"] },

@@ -160,6 +160,20 @@ export interface CycleLog {
   updatedAt: ISODateTime;
 }
 
+/** A user's personal note on a food in the "Can I eat it?" checker. */
+export interface FoodNote {
+  id: ID;
+  userId: ID;
+  foodKey: string; // normalized food name (lowercased) — unique per user
+  foodName: string; // display name
+  note: string;
+  reaction: boolean; // "this disagrees with me" personal flag
+  reactionLabel?: string | null; // short tag for the badge, e.g. "acidity"
+  isCustom: boolean; // food not in the base FODMAP list
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
 export interface Macros {
   protein_g?: number | null;
   carbs_g?: number | null;

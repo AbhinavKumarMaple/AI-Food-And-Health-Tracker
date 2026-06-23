@@ -2,16 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { getAuth } from "@/lib/store";
-import { useQueryClient, qk } from "@/lib/queries";
 import { PrimaryButton } from "@/components/ui";
 import { Field } from "../login/page";
 
 export default function SignupPage() {
-  const router = useRouter();
-  const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,9 +19,8 @@ export default function SignupPage() {
     setBusy(true);
     setError(null);
     try {
-      const u = await getAuth().signUp(email, password, name);
-      queryClient.setQueryData(qk.currentUser, u);
-      router.replace("/");
+      await getAuth().signUp(email, password, name);
+      window.location.assign("/"); // full reload → this account's cookie + cache
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign up failed");
       setBusy(false);

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, KeyRound, Cpu, LogOut, RefreshCw, Smartphone, Mic, Share } from "lucide-react";
 import { getAuth, getStore } from "@/lib/store";
@@ -16,7 +15,6 @@ import { Card } from "@/components/cards";
 import { PrimaryButton } from "@/components/ui";
 
 export default function SettingsPage() {
-  const router = useRouter();
   const { user, loading } = useAuth();
   const queryClient = useQueryClient();
   const settingsQ = useSettings(!!user);
@@ -65,9 +63,10 @@ export default function SettingsPage() {
   }
 
   async function signOut() {
-    await getAuth().signOut();
-    clearAllCache(queryClient);
-    router.replace("/login");
+    const uid = user?.id ?? null;
+    await getAuth().signOut(); // drop current account from the jar (switch to another if any)
+    clearAllCache(queryClient, uid);
+    window.location.assign("/"); // reload → next account, or /login if none left
   }
 
   if (loading || !user || !settings) {
