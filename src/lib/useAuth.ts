@@ -16,14 +16,17 @@ import { useCurrentUser } from "@/lib/queries";
  */
 export function useAuth(redirectIfMissing = true) {
   const router = useRouter();
-  const { data, isPending } = useCurrentUser();
+  const { data, isPending, isFetching } = useCurrentUser();
   const user = data ?? null;
 
   useEffect(() => {
-    if (!isPending && !user && redirectIfMissing) {
+    // Only bounce to /login once the session check has SETTLED with no user —
+    // never while a fetch is in flight (otherwise a transient/empty value would
+    // redirect a validly-signed-in user mid-verification).
+    if (!isPending && !isFetching && !user && redirectIfMissing) {
       router.replace("/login");
     }
-  }, [isPending, user, redirectIfMissing, router]);
+  }, [isPending, isFetching, user, redirectIfMissing, router]);
 
   return { user, loading: isPending };
 }

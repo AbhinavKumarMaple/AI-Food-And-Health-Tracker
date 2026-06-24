@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useState } from "react";
-import { QueryClient, QueryClientProvider, dehydrate, hydrate } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  defaultShouldDehydrateQuery,
+  dehydrate,
+  hydrate,
+} from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { AppWarmup } from "./AppWarmup";
 import { persistKeyFor, readActiveUid, LEGACY_PERSIST_KEY } from "@/lib/queries";
@@ -52,7 +58,16 @@ export function Providers({ children }: { children: React.ReactNode }) {
       if (raw) {
         const parsed = JSON.parse(raw) as Persisted;
         if (parsed.buster === BUSTER && Date.now() - parsed.timestamp < ONE_DAY) {
-          hydrate(queryClient, parsed.clientState);
+          // Identity is verified fresh via /api/auth/me on every load — never
+          // restore a persisted `currentUser`. A stale/null hydrated value would
+          // bounce the user to /login even with a perfectly valid session.
+          const clientState = {
+            ...parsed.clientState,
+            queries: (parsed.clientState.queries ?? []).filter(
+              (q) => !(Array.isArray(q.queryKey) && q.queryKey[0] === "currentUser"),
+            ),
+          };
+          hydrate(queryClient, clientState);
           force((n) => n + 1); // ensure the tree re-renders with restored data pre-paint
         } else {
           window.localStorage.removeItem(key);
@@ -75,7 +90,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
         const data: Persisted = {
           buster: BUSTER,
           timestamp: Date.now(),
-          clientState: dehydrate(queryClient),
+          // Persist everything EXCEPT the session identity — that's always checked
+          // live on load, so it must not be restored from localStorage.
+          clientState: dehydrate(queryClient, {
+            shouldDehydrateQuery: (q) => defaultShouldDehydrateQuery(q) && q.queryKey[0] !== "currentUser",
+          }),
         };
         window.localStorage.setItem(key, JSON.stringify(data));
       } catch {
