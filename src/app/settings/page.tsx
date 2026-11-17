@@ -133,7 +133,7 @@ export default function SettingsPage() {
               className="h-11 w-full rounded-xl border border-line bg-canvas px-3 text-[14px] text-ink outline-none focus:border-primary"
             />
             <p className="mt-2 text-[11px] text-faint">
-              Stored locally on this device. Used to transcribe audio and structure your logs.
+              Stored encrypted on our server. Used to transcribe audio and structure your logs.
             </p>
             <PrimaryButton
               icon={saving || modelsQ.isFetching ? RefreshCw : Check}
