@@ -9,21 +9,17 @@ class SchemaError extends Error {}
 /**
  * Models to fall back through when the selected model is overloaded (503),
  * rate-limited, or unavailable — tried in order, NEWEST FIRST ("from latest to
- * lower"), exactly as specified. IDs verified against the live ListModels API.
- * (gemini-2.5-flash-preview-tts is a speech model and will simply be skipped if
- * it can't structure text — kept here per the requested list.)
+ * lower"). Free-tier models only, each verified (Nov 2026) against the live API
+ * with audio input + JSON output. Gemini 4 Hydrogen is free but left out: it
+ * took ~3 minutes per request, too slow to sit in a fallback chain.
  */
 const DEFAULT_FALLBACK_MODELS = [
-  "gemini-3.5-flash", // Gemini 3.5 Flash
-  "gemini-3.1-flash-lite", // Gemini 3.1 Flash Lite
+  "gemini-3.8-flash", // Gemini 3.8 Flash
+  "gemini-3.6-flash", // Gemini 3.6 Flash
+  "gemini-3.5-flash-lite", // Gemini 3.5 Flash-Lite
+  "gemini-3.1-flash-lite", // Gemini 3.1 Flash-Lite
   "gemini-3-flash-preview", // Gemini 3 Flash Preview
   "gemini-2.5-flash-lite", // Gemini 2.5 Flash-Lite
-  "gemini-2.5-flash-preview-tts", // Gemini 2.5 Flash Preview TTS
-  "gemini-2.5-flash", // Gemini 2.5 Flash
-  "gemini-2.0-flash-lite-001", // Gemini 2.0 Flash-Lite 001
-  "gemini-2.0-flash-lite", // Gemini 2.0 Flash-Lite
-  "gemini-2.0-flash-001", // Gemini 2.0 Flash 001
-  "gemini-2.0-flash", // Gemini 2.0 Flash
 ];
 
 /** Ordered, de-duplicated list of models to try: selected first, then fallbacks. */

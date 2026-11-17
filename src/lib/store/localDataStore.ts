@@ -45,7 +45,7 @@ import { compareDesc, newId, nowIso, toISODate } from "./util";
 import { endOfDayIso, roundRating, timeWeightedRating } from "@/lib/patterns/dayRating";
 import { moodLabel } from "@/lib/format";
 
-const DEFAULT_MODEL = "gemini-2.5-flash-lite";
+const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 export class LocalDataStore implements DataStore {
   constructor(

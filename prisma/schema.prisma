@@ -120,7 +120,7 @@ model UserSettings {
   geminiApiKeyIv         String?
   geminiApiKeyTag        String?
 
-  selectedModel          String                 @default("gemini-2.5-flash-lite")
+  selectedModel          String                 @default("gemini-3.5-flash-lite")
   units                  Units                  @default(metric)
   followUpAggressiveness FollowUpAggressiveness @default(medium)
 
