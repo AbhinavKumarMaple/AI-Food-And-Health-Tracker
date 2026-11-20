@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useIsFetching } from "@tanstack/react-query";
 import { Mic, Utensils, Droplets, Star, ChevronRight, Sparkles, Bell, Info, Droplet, Loader2, Inbox as InboxIcon, Leaf } from "lucide-react";
 import { todayISODate } from "@/lib/store/util";
 import { useAuth } from "@/lib/useAuth";
@@ -17,7 +18,7 @@ import { StatPill } from "@/components/journal";
 import { ActivityRow, type ActivityItem } from "@/components/cards";
 import { SayGuideSheet } from "@/components/SayGuideSheet";
 import { RefreshButton } from "@/components/RefreshButton";
-import { TodaySkeleton, Skeleton, StatPillSkeleton, RowsSkeleton } from "@/components/skeletons";
+import { Skeleton, StatPillSkeleton, RowsSkeleton } from "@/components/skeletons";
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -26,23 +27,33 @@ function greeting(): string {
   return "Good evening";
 }
 
+const noopSubscribe = () => () => {};
+
+/** false in the prerendered HTML, true on the client — gates clock-dependent text. */
+function useMounted(): boolean {
+  return useSyncExternalStore(noopSubscribe, () => true, () => false);
+}
+
 export default function TodayPage() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
+  const mounted = useMounted();
+  const syncing = useIsFetching() > 0;
   const today = todayISODate();
   const dayQ = useDay(today, !!user);
   const settingsQ = useSettings(!!user);
-  const cycleEnabled = settingsQ.data?.cycleTrackingEnabled ?? false;
+  // Cached data only shows for a signed-in user (never a previous session's journal).
+  const settings = user ? settingsQ.data : undefined;
+  const cycleEnabled = settings?.cycleTrackingEnabled ?? false;
   const cycleQ = useCycleLogs(!!user && cycleEnabled);
   const inboxQ = useLogSessions(!!user);
   const [showGuide, setShowGuide] = useState(false);
 
-  const inbox = inboxQ.data ?? [];
+  const inbox = (user && inboxQ.data) || [];
   const readyCount = inbox.filter((s) => s.parseStatus === "parsed").length;
   const processingCount = inbox.filter((s) => s.parseStatus === "processing").length;
 
-  const day = dayQ.data;
-  const settings = settingsQ.data;
+  const day = user ? dayQ.data : undefined;
 
   const cycleStatus = useMemo(() => {
     if (!cycleEnabled || !cycleQ.data) return null;
@@ -66,15 +77,8 @@ export default function TodayPage() {
     );
   }, [day]);
 
-  // Only a true first load (session not yet known) shows the full skeleton.
-  if (loading || !user) {
-    return (
-      <Screen>
-        <TodaySkeleton />
-      </Screen>
-    );
-  }
-
+  // No full-page gate: the header and "Tap to talk" are in the prerendered HTML,
+  // so the mic is reachable at first paint; only data sections show skeletons.
   const dateLabel = new Date()
     .toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" })
     .toUpperCase();
@@ -86,9 +90,25 @@ export default function TodayPage() {
       {/* Header — static, renders immediately */}
       <GradientPanel variant="amber" rounded="rounded-b-[2rem]" className="px-6 pb-16 pt-5">
         <div className="flex items-center justify-between">
-          <p className="text-[11px] font-bold tracking-[0.12em] text-white/80" style={{ fontFamily: "var(--font-label)" }}>
-            {dateLabel}
-          </p>
+          <div className="flex items-center gap-2">
+            {mounted ? (
+              <p className="text-[11px] font-bold tracking-[0.12em] text-white/80" style={{ fontFamily: "var(--font-label)" }}>
+                {dateLabel}
+              </p>
+            ) : (
+              <div className="flex h-[16.5px] items-center">
+                <Skeleton className="h-3 w-28 bg-white/25" />
+              </div>
+            )}
+            {mounted && syncing && (
+              <span
+                className="flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[9.5px] font-bold tracking-wide text-white"
+                style={{ fontFamily: "var(--font-label)" }}
+              >
+                <Loader2 size={10} className="animate-spin" /> UPDATING
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <RefreshButton
               light
@@ -97,17 +117,26 @@ export default function TodayPage() {
             <Bell size={18} className="text-white/85" />
           </div>
         </div>
-        <p className="mt-3 text-[15px] text-white/85">{greeting()},</p>
-        <h1 className="text-[34px] font-extrabold leading-tight text-white" style={{ fontFamily: "var(--font-display)" }}>
-          {user.name?.split(" ")[0] || "there"}.
-        </h1>
+        <p className="mt-3 text-[15px] text-white/85">{mounted ? `${greeting()},` : "Hello,"}</p>
+        {user ? (
+          <h1 className="text-[34px] font-extrabold leading-tight text-white" style={{ fontFamily: "var(--font-display)" }}>
+            {user.name?.split(" ")[0] || "there"}.
+          </h1>
+        ) : (
+          // Same box height as the text it stands in for, so "Tap to talk" doesn't jump.
+          <div className="flex h-[42.5px] items-center">
+            <Skeleton className="h-8 w-36 bg-white/25" />
+          </div>
+        )}
         {day ? (
           <p className="mt-1 text-[13px] text-white/80">
             You&apos;ve logged <span className="font-semibold text-white">{day.meals.length} meals</span> and{" "}
             <span className="font-semibold text-white">{day.symptoms.length} symptoms</span> so far
           </p>
         ) : (
-          <Skeleton className="mt-2 h-3 w-52 bg-white/25" />
+          <div className="mt-1 flex h-[19.5px] items-center">
+            <Skeleton className="h-3 w-52 bg-white/25" />
+          </div>
         )}
       </GradientPanel>
 

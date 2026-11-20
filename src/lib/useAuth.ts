@@ -9,24 +9,23 @@ import { useCurrentUser } from "@/lib/queries";
  * once and reused across navigation (no repeated /api/auth/me). Redirects to
  * /login only when the session is genuinely absent.
  *
- * The persisted cache is restored SYNCHRONOUSLY (before paint, in Providers), so
- * a returning user's session is already in cache on first render — no skeleton,
- * no premature bounce to /login. `isPending` is true only while there is no data
- * yet (the very first `/api/auth/me` fetch), so we never redirect mid-fetch.
+ * The persisted cache (including the last verified user) is restored
+ * SYNCHRONOUSLY before paint in Providers, so a returning user renders signed-in
+ * immediately while `/api/auth/me` revalidates in the background.
  */
 export function useAuth(redirectIfMissing = true) {
   const router = useRouter();
-  const { data, isPending, isFetching } = useCurrentUser();
+  const { data, status, isPending, isFetching } = useCurrentUser();
   const user = data ?? null;
 
   useEffect(() => {
-    // Only bounce to /login once the session check has SETTLED with no user —
-    // never while a fetch is in flight (otherwise a transient/empty value would
-    // redirect a validly-signed-in user mid-verification).
-    if (!isPending && !isFetching && !user && redirectIfMissing) {
+    // Only bounce to /login when the server definitively said "signed out" (a
+    // successful check returning null). A failed check (offline, 5xx) keeps the
+    // cached identity instead of logging a valid session out.
+    if (status === "success" && !isFetching && !user && redirectIfMissing) {
       router.replace("/login");
     }
-  }, [isPending, isFetching, user, redirectIfMissing, router]);
+  }, [status, isFetching, user, redirectIfMissing, router]);
 
   return { user, loading: isPending };
 }

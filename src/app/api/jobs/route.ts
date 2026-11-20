@@ -15,7 +15,11 @@ type Body = {
   inputType?: "voice" | "text" | "mixed";
   /** When present, re-process this existing (failed/stuck) job instead of creating one. */
   retryId?: string;
+  /** Device-generated id for a new capture: re-sending it returns the same job. */
+  clientId?: string;
 };
+
+const CLIENT_ID = /^[0-9a-f-]{36}$/i;
 
 type ProcessInput = {
   audioBase64?: string | null;
@@ -74,11 +78,10 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as Body;
   const store = new PrismaDataStore(uid);
 
-  const settings = await store.getSettings();
+  const [settings, profile] = await Promise.all([store.getSettings(), store.getProfile()]);
   if (!settings.geminiApiKey) {
     return NextResponse.json({ error: "Add your Gemini API key in Settings first." }, { status: 400 });
   }
-  const profile = await store.getProfile();
   const user: UserHealthContext = {
     timezone: profile.timezone,
     knownAllergies: profile.knownAllergies,
@@ -123,14 +126,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Nothing to process." }, { status: 400 });
   }
 
-  const session = await store.createLogSession({
-    inputType: body.inputType ?? (body.audioBase64 ? "voice" : "text"),
-    audioDurationSeconds: body.audioDurationSeconds ?? null,
-    transcript: body.transcript ?? null,
-    typedTextBefore: body.typedText ?? null,
-    geminiModelUsed: settings.selectedModel,
-    parseStatus: "processing",
-  });
+  // A re-sent capture (the first response was lost) maps to the job it already created.
+  const clientId = body.clientId && CLIENT_ID.test(body.clientId) ? body.clientId : undefined;
+  if (clientId) {
+    const existing = await store.getLogSession(clientId);
+    if (existing) return NextResponse.json({ jobId: existing.id });
+  }
+
+  let session;
+  try {
+    session = await store.createLogSession({
+      id: clientId,
+      inputType: body.inputType ?? (body.audioBase64 ? "voice" : "text"),
+      audioDurationSeconds: body.audioDurationSeconds ?? null,
+      transcript: body.transcript ?? null,
+      typedTextBefore: body.typedText ?? null,
+      geminiModelUsed: settings.selectedModel,
+      parseStatus: "processing",
+    });
+  } catch (e) {
+    // Two copies of the same capture raced: the other one created the job.
+    const existing = clientId ? await store.getLogSession(clientId) : null;
+    if (existing) return NextResponse.json({ jobId: existing.id });
+    throw e;
+  }
 
   after(() =>
     processJob(store, session.id, {

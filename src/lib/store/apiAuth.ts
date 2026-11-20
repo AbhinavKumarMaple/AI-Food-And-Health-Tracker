@@ -49,15 +49,14 @@ export class ApiAuth implements AuthService {
     });
   }
 
+  /** null only when the server says signed out (401). Network/server failures
+   *  throw, so a cached identity survives a flaky connection. */
   async getCurrentUser(): Promise<User | null> {
-    try {
-      const res = await fetch("/api/auth/me");
-      if (!res.ok) return null;
-      const data = await res.json();
-      return (data.user as User) ?? null;
-    } catch {
-      return null;
-    }
+    const res = await fetch("/api/auth/me");
+    if (res.status === 401) return null;
+    if (!res.ok) throw new Error(`Session check failed (HTTP ${res.status})`);
+    const data = await res.json();
+    return (data.user as User) ?? null;
   }
 
   async listAccounts(): Promise<AccountSummary[]> {

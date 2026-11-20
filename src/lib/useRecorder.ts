@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type RecorderState = "idle" | "recording" | "paused" | "stopped";
 
@@ -39,6 +39,35 @@ export function useRecorder() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const finalRef = useRef("");
   const blobResolveRef = useRef<((b: Blob) => void) | null>(null);
+  const lastResultRef = useRef<{ blob: Blob; transcript: string } | null>(null);
+  const unmountedRef = useRef(false);
+
+  /** Release the mic, live transcript, timer and waveform (idempotent). */
+  const releaseRef = useRef(() => {
+    recognitionRef.current?.stop();
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") audioCtxRef.current.close().catch(() => {});
+  });
+
+  // Leaving the screen (X, back, a redirect) must always release the microphone.
+  useEffect(() => {
+    unmountedRef.current = false;
+    const release = releaseRef.current;
+    return () => {
+      unmountedRef.current = true;
+      const mr = mediaRecorderRef.current;
+      if (mr && mr.state !== "inactive") {
+        try {
+          mr.stop();
+        } catch {
+          /* noop */
+        }
+      }
+      release();
+    };
+  }, []);
 
   const drawLoop = useCallback(() => {
     const analyser = analyserRef.current;
@@ -61,6 +90,10 @@ export function useRecorder() {
     setTranscript("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (unmountedRef.current) {
+        stream.getTracks().forEach((t) => t.stop()); // screen closed while the mic was opening
+        return;
+      }
       streamRef.current = stream;
 
       const mime = MediaRecorder.isTypeSupported("audio/webm")
@@ -71,15 +104,24 @@ export function useRecorder() {
       mr.ondataavailable = (e) => {
         if (e.data.size) chunksRef.current.push(e.data);
       };
+      lastResultRef.current = null;
+      blobResolveRef.current = null;
+      // The single place a result is built — also when the browser stops the
+      // recording on its own (mic unplugged / taken), so stop() can still return it.
       mr.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        lastResultRef.current = { blob, transcript: finalRef.current.trim() };
         blobResolveRef.current?.(blob);
+        blobResolveRef.current = null;
       };
       mr.start();
       mediaRecorderRef.current = mr;
 
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new Ctx();
+      // Opened from the home-screen shortcut there's no tap yet, so the context
+      // can start suspended (flat waveform) — recording itself is unaffected.
+      ctx.resume().catch(() => {});
       const srcNode = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 128;
@@ -127,6 +169,12 @@ export function useRecorder() {
 
   const stop = useCallback(async (): Promise<{ blob: Blob; transcript: string } | null> => {
     if (!mediaRecorderRef.current) return null;
+    // Already stopped (a second tap, or the browser ended it): release and reuse the result.
+    if (mediaRecorderRef.current.state === "inactive") {
+      releaseRef.current();
+      setState("stopped");
+      return lastResultRef.current;
+    }
     const blobPromise = new Promise<Blob>((resolve) => {
       blobResolveRef.current = resolve;
     });
@@ -135,14 +183,11 @@ export function useRecorder() {
     } catch {
       /* noop */
     }
-    recognitionRef.current?.stop();
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    audioCtxRef.current?.close().catch(() => {});
+    releaseRef.current();
     setState("stopped");
     const blob = await blobPromise;
-    return { blob, transcript: (finalRef.current || transcript).trim() };
+    lastResultRef.current = { blob, transcript: (finalRef.current || transcript).trim() };
+    return lastResultRef.current;
   }, [transcript]);
 
   const togglePause = useCallback(() => {

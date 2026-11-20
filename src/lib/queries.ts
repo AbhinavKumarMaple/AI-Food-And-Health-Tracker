@@ -4,6 +4,7 @@ import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-quer
 import { getAuth, getStore } from "@/lib/store";
 import type { ISODate, LogSession, ParseStatus } from "@/lib/store/types";
 import type { GeminiModel } from "@/lib/gemini/models";
+import { withPendingCaptures } from "@/lib/pendingCaptures";
 
 /** localStorage prefix the query cache is persisted under, namespaced per account. */
 export const PERSIST_PREFIX = "avni-query-cache";
@@ -162,7 +163,8 @@ export async function ensureDayContext(client: QueryClient, date?: ISODate): Pro
 export function useLogSessions(enabled = true) {
   return useQuery({
     queryKey: qk.logSessions,
-    queryFn: () => getStore().listLogSessions(INBOX_STATUSES),
+    // This device's not-yet-uploaded captures stay on top until the server has them.
+    queryFn: async () => withPendingCaptures(await getStore().listLogSessions(INBOX_STATUSES)),
     enabled,
     staleTime: 0, // status changes matter — always revalidate (cached data still shows instantly)
     refetchInterval: (query) => {

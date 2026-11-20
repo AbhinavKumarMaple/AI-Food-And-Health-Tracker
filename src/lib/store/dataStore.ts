@@ -61,6 +61,7 @@ export type NewLogSession = Pick<LogSession, "inputType"> &
   Partial<
     Pick<
       LogSession,
+      | "id" // client-chosen, so a re-sent capture maps to the same job
       | "audioDurationSeconds"
       | "transcript"
       | "typedTextBefore"

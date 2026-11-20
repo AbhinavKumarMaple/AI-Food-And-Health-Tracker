@@ -117,7 +117,7 @@ export class LocalDataStore implements DataStore {
   async createLogSession(input: NewLogSession): Promise<LogSession> {
     const sessions = this.read<LogSession[]>("sessions", []);
     const session: LogSession = {
-      id: newId(),
+      id: input.id ?? newId(),
       userId: this.uid(),
       inputType: input.inputType,
       audioDurationSeconds: input.audioDurationSeconds ?? null,

@@ -10,7 +10,7 @@ import {
 } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { AppWarmup } from "./AppWarmup";
-import { persistKeyFor, readActiveUid, LEGACY_PERSIST_KEY } from "@/lib/queries";
+import { persistKeyFor, readActiveUid, LEGACY_PERSIST_KEY, qk } from "@/lib/queries";
 
 const ONE_DAY = 1000 * 60 * 60 * 24;
 const BUSTER = "v2";
@@ -51,23 +51,29 @@ export function Providers({ children }: { children: React.ReactNode }) {
     window.localStorage.removeItem(LEGACY_PERSIST_KEY);
     // Hydrate ONLY the cache belonging to the currently-signed-in account. Logged
     // out (no avni_uid) → hydrate nothing, so no prior user's data is restored.
-    const key = persistKeyFor(readActiveUid());
+    const uid = readActiveUid();
+    const key = persistKeyFor(uid);
     if (!key) return;
     try {
       const raw = window.localStorage.getItem(key);
       if (raw) {
         const parsed = JSON.parse(raw) as Persisted;
         if (parsed.buster === BUSTER && Date.now() - parsed.timestamp < ONE_DAY) {
-          // Identity is verified fresh via /api/auth/me on every load — never
-          // restore a persisted `currentUser`. A stale/null hydrated value would
-          // bounce the user to /login even with a perfectly valid session.
+          // Restore the last verified user so the app renders signed-in at first
+          // paint. Only a real user for THIS account is restored — never a null —
+          // and as a success even if its last revalidation failed.
           const clientState = {
             ...parsed.clientState,
-            queries: (parsed.clientState.queries ?? []).filter(
-              (q) => !(Array.isArray(q.queryKey) && q.queryKey[0] === "currentUser"),
-            ),
+            queries: (parsed.clientState.queries ?? []).flatMap((q) => {
+              if (!(Array.isArray(q.queryKey) && q.queryKey[0] === "currentUser")) return [q];
+              const user = q.state.data as { id?: string } | null | undefined;
+              if (!user || user.id !== uid) return [];
+              return [{ ...q, state: { ...q.state, status: "success" as const, error: null, fetchStatus: "idle" as const } }];
+            }),
           };
           hydrate(queryClient, clientState);
+          // Always re-verify the restored identity in the background on open.
+          void queryClient.invalidateQueries({ queryKey: qk.currentUser, refetchType: "none" });
           force((n) => n + 1); // ensure the tree re-renders with restored data pre-paint
         } else {
           window.localStorage.removeItem(key);
@@ -90,10 +96,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
         const data: Persisted = {
           buster: BUSTER,
           timestamp: Date.now(),
-          // Persist everything EXCEPT the session identity — that's always checked
-          // live on load, so it must not be restored from localStorage.
+          // Persist the session identity whenever it's a real user — even after a
+          // failed revalidation — but never a null (it would restore as "signed out").
           clientState: dehydrate(queryClient, {
-            shouldDehydrateQuery: (q) => defaultShouldDehydrateQuery(q) && q.queryKey[0] !== "currentUser",
+            shouldDehydrateQuery: (q) =>
+              q.queryKey[0] === "currentUser" ? q.state.data != null : defaultShouldDehydrateQuery(q),
           }),
         };
         window.localStorage.setItem(key, JSON.stringify(data));

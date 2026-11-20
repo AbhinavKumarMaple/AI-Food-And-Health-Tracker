@@ -513,6 +513,7 @@ export class PrismaDataStore implements DataStore {
   async createLogSession(input: NewLogSession) {
     const row = await prisma.logSession.create({
       data: {
+        ...(input.id ? { id: input.id } : {}),
         userId: this.userId,
         inputType: input.inputType,
         audioDurationSeconds: input.audioDurationSeconds ?? null,

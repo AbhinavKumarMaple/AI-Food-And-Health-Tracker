@@ -6,6 +6,8 @@ import type { LogSession } from "@/lib/store/types";
 import { useAuth } from "@/lib/useAuth";
 import { useLogSessions, useQueryClient } from "@/lib/queries";
 import { discardSessionOptimistic, retrySessionOptimistic } from "@/lib/mutations";
+import { discardCapture, retryCapture } from "@/lib/capture";
+import { isLocalCapture } from "@/lib/pendingCaptures";
 import { Screen } from "@/components/Screen";
 import { PageHeader } from "@/components/PageHeader";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -37,11 +39,15 @@ export default function InboxPage() {
   const q = useLogSessions(!!user);
   const sessions = q.data;
 
+  // "local-" rows are recordings that never reached the server; they're retried
+  // or dropped on this device instead of via the server job.
   function dismiss(id: string) {
-    discardSessionOptimistic(queryClient, id);
+    if (isLocalCapture(id)) discardCapture(queryClient, id);
+    else discardSessionOptimistic(queryClient, id);
   }
   function retry(id: string) {
-    retrySessionOptimistic(queryClient, id);
+    if (isLocalCapture(id)) void retryCapture(queryClient, id, (jobId) => router.push(`/review/${jobId}`));
+    else retrySessionOptimistic(queryClient, id);
   }
 
   return (
@@ -98,7 +104,7 @@ export default function InboxPage() {
 
                   {ready ? (
                     <ChevronRight size={18} className="shrink-0 text-faint" />
-                  ) : (
+                  ) : isLocalCapture(s.id) && !failed ? null : (
                     <div className="flex shrink-0 items-center gap-1">
                       {failed && (
                         <button

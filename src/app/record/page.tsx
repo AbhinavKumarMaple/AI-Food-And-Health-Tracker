@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { X, Pause, Play, Check, Square, Info, Loader2 } from "lucide-react";
 import { getStore } from "@/lib/store";
 import { useAuth } from "@/lib/useAuth";
-import { useQueryClient, invalidateLogSessions } from "@/lib/queries";
-import { useRecorder, formatElapsed, blobToBase64 } from "@/lib/useRecorder";
+import { useQueryClient, qk } from "@/lib/queries";
+import { useRecorder, formatElapsed } from "@/lib/useRecorder";
+import { submitCapture } from "@/lib/capture";
 import { SayGuideSheet } from "@/components/SayGuideSheet";
-import type { User } from "@/lib/store/types";
+import type { UserSettings } from "@/lib/store/types";
 
 // Map a spoken language to a BCP-47 locale for the browser's live transcript.
 const SPEECH_LANG: Record<string, string> = {
@@ -42,100 +43,59 @@ export default function RecordPage() {
   const rec = useRecorder();
   const [note, setNote] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const started = useRef(false);
-  const profileRef = useRef<User | null>(null);
 
-  // Once submitted, poll the job; open review the moment it's ready.
-  useEffect(() => {
-    if (!jobId) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      try {
-        const s = await getStore().getLogSession(jobId);
-        if (!active) return;
-        if (s?.parseStatus === "parsed") {
-          router.replace(`/review/${jobId}`);
-          return;
-        }
-        if (s?.parseStatus === "failed") {
-          setError(s.error || "We couldn't organize that — please try again.");
-          setProcessing(false);
-          setJobId(null);
-          return;
-        }
-      } catch {
-        // keep polling
-      }
-      if (active) timer = setTimeout(poll, 2000);
-    };
-    timer = setTimeout(poll, 1200);
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [jobId, router]);
-
+  // Start listening the moment the (cached) user is known — the language comes
+  // from the cached profile, so no network round trip sits before the mic.
   useEffect(() => {
     if (!user || started.current) return;
     started.current = true;
-    (async () => {
-      let lang = "en-IN";
-      try {
-        const p = await getStore().getProfile();
-        profileRef.current = p;
-        lang = speechLangFor(p.languages);
-      } catch {
-        // fall back to Indian English
-      }
-      rec.start(lang);
-    })();
+    rec.start(speechLangFor(user.languages));
   }, [user, rec]);
 
+  const finishing = useRef(false);
+
   async function finish() {
+    if (finishing.current) return; // stop + check both call this; ignore a double tap
+    finishing.current = true;
     setProcessing(true);
     setError(null);
     const result = await rec.stop();
-    const store = getStore();
-    const settings = await store.getSettings();
 
-    if (!settings.geminiApiKey) {
+    // Trust a cached key; re-check a cached "no key" (it may be stale) before refusing.
+    let settings = queryClient.getQueryData<UserSettings>(qk.settings);
+    if (settings && !settings.geminiApiKey) {
+      settings = await queryClient
+        .fetchQuery({ queryKey: qk.settings, queryFn: () => getStore().getSettings(), staleTime: 0 })
+        .catch(() => settings);
+    }
+    if (settings && !settings.geminiApiKey) {
       setError("Add your Gemini API key in Settings to process recordings.");
       setProcessing(false);
+      finishing.current = false;
       return;
     }
     if (!result && !note.trim()) {
       setError("Nothing captured. Say something or type a note.");
       setProcessing(false);
+      finishing.current = false;
       return;
     }
 
-    try {
-      const audioBase64 = result ? await blobToBase64(result.blob) : null;
-      // Submit for BACKGROUND processing — returns immediately with a job id.
-      const res = await fetch("/api/jobs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          audioBase64,
-          audioMime: result?.blob.type ?? null,
-          typedText: note.trim() || null,
-          transcript: result?.transcript ?? rec.transcript ?? null,
-          audioDurationSeconds: Math.round(rec.elapsedMs / 1000),
-          inputType: audioBase64 ? (note.trim() ? "mixed" : "voice") : "text",
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not submit recording");
-      invalidateLogSessions(queryClient); // show it in the Inbox / Today card
-      setJobId(data.jobId); // enter the "organizing…" wait state
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
-      setProcessing(false);
-    }
+    // Optimistic: saved on the device, then uploaded in the background — go home right away.
+    await submitCapture(
+      queryClient,
+      {
+        blob: result?.blob ?? null,
+        typedText: note.trim() || null,
+        transcript: result?.transcript ?? rec.transcript ?? null,
+        durationSeconds: Math.round(rec.elapsedMs / 1000),
+      },
+      (id) => router.push(`/review/${id}`),
+    );
+    router.replace("/");
   }
 
   if (loading || !user) return null;
@@ -233,28 +193,6 @@ export default function RecordPage() {
           <Check size={22} />
         </button>
       </div>
-
-      {(processing || jobId) && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-[#1a1a1a]/85 px-8 text-center backdrop-blur">
-          <Loader2 size={34} className="animate-spin text-primary" />
-          {jobId ? (
-            <>
-              <p className="text-[15px] font-semibold text-white">Organizing your log…</p>
-              <p className="max-w-[15rem] text-[13px] leading-snug text-white/70">
-                Wait here and we&apos;ll open it to review — or close, and it&apos;ll be ready in your Inbox.
-              </p>
-              <button
-                onClick={() => router.replace("/")}
-                className="mt-2 rounded-full border border-white/30 px-6 py-2 text-[14px] font-semibold text-white active:scale-95"
-              >
-                Close
-              </button>
-            </>
-          ) : (
-            <p className="text-[14px] text-white/80">Submitting…</p>
-          )}
-        </div>
-      )}
 
       <SayGuideSheet open={showGuide} onClose={() => setShowGuide(false)} />
     </div>
